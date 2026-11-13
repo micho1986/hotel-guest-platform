@@ -38,7 +38,23 @@ CI runs `prisma migrate diff --from-migrations … --to-schema … --exit-code`,
 CI also applies the migrations with the real `prisma migrate deploy`.
 From M1 on, migrations are generated normally with `prisma migrate dev` on a developer machine.
 
-## 007 — Deferred on purpose
+## 007 — Staff sign-in
+Staff sign in with hotel code + email + password, because the same email may exist at two hotels.
+Sessions are rows in `staff_sessions` (the cookie holds a random token; only its hash is stored), so sign-out, disabling an account, a role change or a password reset ends them at once.
+Two `SECURITY DEFINER` functions cover the lookups that happen before the hotel is known: `find_hotel_by_slug` and `resolve_staff_session`.
+GM and Hotel Admin accounts must use an authenticator app (TOTP, RFC 6238, implemented in `src/server/auth/totp.ts` and checked against the RFC test vectors).
+Authenticator secrets are encrypted at rest with `APP_ENCRYPTION_KEY`. Losing that key means admins re-enrol; it never unlocks data.
+Five wrong passwords or codes lock the account for 15 minutes.
+
+## 008 — Rules live in services, not in screens
+Every admin operation is a function in `src/server/admin/` that checks the caller's permission and validates its input itself.
+Server actions only identify the caller and pass the raw form values through.
+A hidden button is never the protection; the tests call the services directly as each role.
+
+## 009 — Deferred on purpose
 - **Fonts:** M0 uses system font stacks (Georgia for display, system Arabic fonts). Self-hosted brand fonts, including an Arabic display face, are a design-polish task.
 - **Hosting region:** default managed hosting for now. Check data-residency requirements with the pilot hotel's IT before M6.
+- **Sign-in rate limiting by IP address:** per-account lockout exists now; IP-based limits come with M6 hardening.
+- **Read-only settings for the GM:** the GM sees the settings forms with a notice, and the server refuses their changes. Proper read-only views are polish.
+- **Several roles per person:** the data model allows it; the screens assign one role each for now.
 - **Super Admin:** a setup script, not a screen, until about five customers.

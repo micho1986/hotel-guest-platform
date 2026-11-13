@@ -10,6 +10,7 @@ import { hash } from "@node-rs/argon2";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, StaffRole } from "../src/generated/prisma/client";
 import { generateAccessToken, hashAccessToken } from "../src/server/tokens";
+import { DEFAULT_CATEGORIES as categories, DEFAULT_DEPARTMENTS as departments } from "./defaults";
 
 const DEMO_SLUG = "demo-azure-dunes-dubai";
 const DEMO_PASSWORD = "DemoHotel!2026"; // demo accounts only — documented in README
@@ -17,33 +18,6 @@ const DEMO_PASSWORD = "DemoHotel!2026"; // demo accounts only — documented in 
 const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_ADMIN_URL! }),
 });
-
-const departments = [
-  { code: "FO", nameEn: "Front Office", nameAr: "المكتب الأمامي" },
-  { code: "HK", nameEn: "Housekeeping", nameAr: "التدبير المنزلي" },
-  { code: "ENG", nameEn: "Engineering", nameAr: "الصيانة" },
-  { code: "CONC", nameEn: "Concierge", nameAr: "الكونسيرج" },
-  { code: "LAUN", nameEn: "Laundry", nameAr: "المغسلة" },
-  { code: "FB", nameEn: "Food & Beverage", nameAr: "الأغذية والمشروبات" },
-] as const;
-
-// The 14 guest tiles from the brief. Only MVP services are active.
-const categories = [
-  { key: "housekeeping", nameEn: "Housekeeping", nameAr: "التدبير المنزلي", icon: "sparkles", active: true },
-  { key: "amenities", nameEn: "Room Amenities", nameAr: "مستلزمات الغرفة", icon: "gift", active: true },
-  { key: "maintenance", nameEn: "Maintenance", nameAr: "الصيانة", icon: "wrench", active: true },
-  { key: "laundry", nameEn: "Laundry", nameAr: "الغسيل", icon: "shirt", active: true },
-  { key: "concierge", nameEn: "Concierge", nameAr: "الكونسيرج", icon: "bell", active: true },
-  { key: "hotel_info", nameEn: "Hotel Information", nameAr: "معلومات الفندق", icon: "info", active: true },
-  { key: "room_service", nameEn: "In-Room Dining", nameAr: "خدمة الغرف", icon: "utensils", active: false },
-  { key: "restaurants", nameEn: "Restaurant Reservations", nameAr: "حجز المطاعم", icon: "calendar", active: false },
-  { key: "transport", nameEn: "Transportation", nameAr: "المواصلات", icon: "car", active: false },
-  { key: "spa", nameEn: "Spa & Wellness", nameAr: "السبا والعافية", icon: "flower", active: false },
-  { key: "pool", nameEn: "Swimming Pool", nameAr: "المسبح", icon: "waves", active: false },
-  { key: "gym", nameEn: "Gym & Fitness", nameAr: "النادي الرياضي", icon: "dumbbell", active: false },
-  { key: "activities", nameEn: "Activities & Experiences", nameAr: "الأنشطة والتجارب", icon: "compass", active: false },
-  { key: "feedback", nameEn: "Guest Feedback", nameAr: "آراء الضيوف", icon: "star", active: false },
-];
 
 type Item = { cat: string; dept: string; nameEn: string; nameAr: string; maxQty?: number; needsNote?: boolean; safety?: boolean };
 const items: Item[] = [

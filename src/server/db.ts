@@ -98,3 +98,24 @@ export async function resolveStayByTokenHash(
   const row = rows[0];
   return row ? { stayId: row.stay_id, hotelId: row.hotel_id } : null;
 }
+
+/** Sign-in: hotel code → hotel id and status, via find_hotel_by_slug(). */
+export async function findHotelBySlug(slug: string): Promise<{ hotelId: string; status: string } | null> {
+  const rows = await appDb().$queryRaw<{ hotel_id: string; status: string }[]>`
+    SELECT hotel_id, status::text AS status FROM find_hotel_by_slug(${slug})`;
+  const row = rows[0];
+  return row ? { hotelId: row.hotel_id, status: row.status } : null;
+}
+
+/** Session cookie token hash → session, via resolve_staff_session(). */
+export async function resolveStaffSession(
+  tokenHash: string,
+): Promise<{ sessionId: string; hotelId: string; staffUserId: string; mfaVerifiedAt: Date | null } | null> {
+  const rows = await appDb().$queryRaw<
+    { session_id: string; hotel_id: string; staff_user_id: string; mfa_verified_at: Date | null }[]
+  >`SELECT session_id, hotel_id, staff_user_id, mfa_verified_at FROM resolve_staff_session(${tokenHash})`;
+  const row = rows[0];
+  return row
+    ? { sessionId: row.session_id, hotelId: row.hotel_id, staffUserId: row.staff_user_id, mfaVerifiedAt: row.mfa_verified_at }
+    : null;
+}

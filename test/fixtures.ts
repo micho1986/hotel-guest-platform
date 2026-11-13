@@ -59,3 +59,28 @@ export async function createHotelWithData(label: string) {
 
   return { hotel, hotelId, dept, room, item, createStay, createRequest };
 }
+
+import { hashPassword } from "@/server/auth/passwords";
+import type { StaffRole } from "@/generated/prisma/enums";
+
+export const TEST_PASSWORD = "Correct-Horse-42";
+
+/** A staff account with one role, created directly (as the platform script would). */
+export async function createStaffUser(
+  hotelId: string,
+  opts: { email: string; role: StaffRole; departmentId?: string | null; mustChangePassword?: boolean },
+) {
+  const user = await adminDb.staffUser.create({
+    data: {
+      hotelId,
+      email: opts.email,
+      name: `Test ${opts.role}`,
+      passwordHash: await hashPassword(TEST_PASSWORD),
+      mustChangePassword: opts.mustChangePassword ?? false,
+    },
+  });
+  await adminDb.staffMembership.create({
+    data: { hotelId, staffUserId: user.id, role: opts.role, departmentId: opts.departmentId ?? null },
+  });
+  return user;
+}
