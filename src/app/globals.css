@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+/* Design tokens — luxury, calm, high contrast. Use logical utilities
+   (ms-/me-/ps-/pe-/start-/end-) so layouts mirror correctly in Arabic. */
+@theme {
+  --color-navy: #14213d;
+  --color-navy-light: #26365c;
+  --color-ivory: #f8f5ef;
+  --color-champagne: #c9a96e;
+  --color-champagne-dark: #a8864c;
+  --color-charcoal: #2b2b2b;
+  --color-soft-gray: #e7e5e0;
+
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-arabic: "Geeza Pro", "Segoe UI", Tahoma, "Noto Naskh Arabic", sans-serif;
+}
+
+body {
+  background: var(--color-ivory);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans);
+}
+
+[dir="rtl"] body {
+  font-family: var(--font-arabic);
+}

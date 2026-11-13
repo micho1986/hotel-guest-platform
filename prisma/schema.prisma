@@ -1,0 +1,410 @@
+// MVP schema — see docs/DECISIONS.md and the MVP Implementation Plan (section 3).
+// Every tenant table carries hotel_id and is protected by Postgres row-level
+// security (see the rls migration). Only `hotels` has no hotel_id: its own id is the tenant key.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum HotelStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum StaffRole {
+  EMPLOYEE
+  SUPERVISOR
+  GM
+  HOTEL_ADMIN
+}
+
+enum StaffStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum StayStatus {
+  ACTIVE
+  CHECKED_OUT
+}
+
+enum RequestStatus {
+  SUBMITTED
+  RECEIVED
+  ACCEPTED
+  IN_PROGRESS
+  WAITING_FOR_GUEST
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  NORMAL
+  URGENT
+}
+
+enum ActorType {
+  GUEST
+  STAFF
+  SYSTEM
+}
+
+model Hotel {
+  id            String      @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String      @unique
+  logoUrl       String?     @map("logo_url")
+  brandColors   Json?       @map("brand_colors")
+  timezone      String      @default("Asia/Dubai")
+  defaultLocale String      @default("en") @map("default_locale")
+  locales       String[]    @default(["en", "ar"])
+  status        HotelStatus @default(ACTIVE)
+  isDemo        Boolean     @default(false) @map("is_demo")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  departments       Department[]
+  rooms             Room[]
+  stays             Stay[]
+  staffUsers        StaffUser[]
+  staffMemberships  StaffMembership[]
+  serviceCategories ServiceCategory[]
+  serviceItems      ServiceItem[]
+  requests          Request[]
+  requestEvents     RequestEvent[]
+  requestPhotos     RequestPhoto[]
+  requestFeedback   RequestFeedback[]
+  slaRules          SlaRule[]
+  announcements     Announcement[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+
+  @@map("hotels")
+}
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  hotelId   String   @map("hotel_id") @db.Uuid
+  code      String // HK, ENG, FO, CONC, LAUN, FB
+  nameEn    String   @map("name_en")
+  nameAr    String   @map("name_ar")
+  isActive  Boolean  @default(true) @map("is_active")
+  isDemo    Boolean  @default(false) @map("is_demo")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel        Hotel             @relation(fields: [hotelId], references: [id])
+  memberships  StaffMembership[]
+  serviceItems ServiceItem[]
+  requests     Request[]
+  slaRules     SlaRule[]
+
+  @@unique([hotelId, code])
+  @@map("departments")
+}
+
+model Room {
+  id              String    @id @default(uuid()) @db.Uuid
+  hotelId         String    @map("hotel_id") @db.Uuid
+  number          String
+  floor           String?
+  building        String?
+  roomQrTokenHash String?   @unique @map("room_qr_token_hash")
+  isActive        Boolean   @default(true) @map("is_active")
+  isDemo          Boolean   @default(false) @map("is_demo")
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel    Hotel     @relation(fields: [hotelId], references: [id])
+  stays    Stay[]
+  requests Request[]
+
+  @@unique([hotelId, number])
+  @@map("rooms")
+}
+
+model Stay {
+  id               String     @id @default(uuid()) @db.Uuid
+  hotelId          String     @map("hotel_id") @db.Uuid
+  roomId           String     @map("room_id") @db.Uuid
+  guestDisplayName String     @map("guest_display_name")
+  checkIn          DateTime   @map("check_in") @db.Timestamptz(3)
+  checkOut         DateTime   @map("check_out") @db.Timestamptz(3)
+  // Only the SHA-256 hash of the guest access token is stored, never the token.
+  accessTokenHash  String     @unique @map("access_token_hash")
+  tokenRevokedAt   DateTime?  @map("token_revoked_at") @db.Timestamptz(3)
+  status           StayStatus @default(ACTIVE)
+  isDemo           Boolean    @default(false) @map("is_demo")
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel    Hotel     @relation(fields: [hotelId], references: [id])
+  room     Room      @relation(fields: [roomId], references: [id])
+  requests Request[]
+
+  @@index([hotelId, roomId])
+  @@map("stays")
+}
+
+model StaffUser {
+  id           String      @id @default(uuid()) @db.Uuid
+  hotelId      String      @map("hotel_id") @db.Uuid
+  email        String
+  passwordHash String      @map("password_hash")
+  name         String
+  mfaSecret    String?     @map("mfa_secret")
+  status       StaffStatus @default(ACTIVE)
+  lastLoginAt  DateTime?   @map("last_login_at") @db.Timestamptz(3)
+  isDemo       Boolean     @default(false) @map("is_demo")
+  deletedAt    DateTime?   @map("deleted_at") @db.Timestamptz(3)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel            Hotel             @relation(fields: [hotelId], references: [id])
+  memberships      StaffMembership[]
+  assignedRequests Request[]         @relation("RequestAssignee")
+  notifications    Notification[]
+
+  @@unique([hotelId, email])
+  @@map("staff_users")
+}
+
+// Role per department. department_id is null for hotel-wide roles (GM, HOTEL_ADMIN).
+model StaffMembership {
+  id           String    @id @default(uuid()) @db.Uuid
+  hotelId      String    @map("hotel_id") @db.Uuid
+  staffUserId  String    @map("staff_user_id") @db.Uuid
+  departmentId String?   @map("department_id") @db.Uuid
+  role         StaffRole
+  isDemo       Boolean   @default(false) @map("is_demo")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel      Hotel       @relation(fields: [hotelId], references: [id])
+  staffUser  StaffUser   @relation(fields: [staffUserId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  @@unique([staffUserId, departmentId, role])
+  @@map("staff_memberships")
+}
+
+model ServiceCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  hotelId   String   @map("hotel_id") @db.Uuid
+  key       String
+  nameEn    String   @map("name_en")
+  nameAr    String   @map("name_ar")
+  icon      String?
+  sort      Int      @default(0)
+  isActive  Boolean  @default(true) @map("is_active")
+  isDemo    Boolean  @default(false) @map("is_demo")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel Hotel         @relation(fields: [hotelId], references: [id])
+  items ServiceItem[]
+
+  @@unique([hotelId, key])
+  @@map("service_categories")
+}
+
+model ServiceItem {
+  id             String    @id @default(uuid()) @db.Uuid
+  hotelId        String    @map("hotel_id") @db.Uuid
+  categoryId     String    @map("category_id") @db.Uuid
+  // The routing rule: a request for this item goes to this department.
+  departmentId   String    @map("department_id") @db.Uuid
+  nameEn         String    @map("name_en")
+  nameAr         String    @map("name_ar")
+  descriptionEn  String?   @map("description_en")
+  descriptionAr  String?   @map("description_ar")
+  maxQty         Int       @default(1) @map("max_qty")
+  needsNote      Boolean   @default(false) @map("needs_note")
+  // Nullable until in-room dining (post-MVP) uses it.
+  price          Decimal?  @db.Decimal(12, 2)
+  safetyCritical Boolean   @default(false) @map("safety_critical")
+  isActive       Boolean   @default(true) @map("is_active")
+  isDemo         Boolean   @default(false) @map("is_demo")
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel      Hotel           @relation(fields: [hotelId], references: [id])
+  category   ServiceCategory @relation(fields: [categoryId], references: [id])
+  department Department      @relation(fields: [departmentId], references: [id])
+  requests   Request[]
+
+  @@index([hotelId, categoryId])
+  @@map("service_items")
+}
+
+model Request {
+  id              String        @id @default(uuid()) @db.Uuid
+  hotelId         String        @map("hotel_id") @db.Uuid
+  publicRef       String        @map("public_ref") // e.g. HK-1042
+  stayId          String?       @map("stay_id") @db.Uuid // null when staff report an issue
+  roomId          String        @map("room_id") @db.Uuid
+  serviceItemId   String        @map("service_item_id") @db.Uuid
+  departmentId    String        @map("department_id") @db.Uuid
+  qty             Int           @default(1)
+  guestNote       String?       @map("guest_note")
+  priority        Priority      @default(NORMAL)
+  status          RequestStatus @default(SUBMITTED)
+  assigneeId      String?       @map("assignee_id") @db.Uuid
+  acceptedAt      DateTime?     @map("accepted_at") @db.Timestamptz(3)
+  startedAt       DateTime?     @map("started_at") @db.Timestamptz(3)
+  completedAt     DateTime?     @map("completed_at") @db.Timestamptz(3)
+  dueAcceptAt     DateTime?     @map("due_accept_at") @db.Timestamptz(3)
+  dueCompleteAt   DateTime?     @map("due_complete_at") @db.Timestamptz(3)
+  // Escalation is a flag, not a status: 0 = none, 1 = supervisor, 2 = GM.
+  escalationLevel Int           @default(0) @map("escalation_level")
+  isDemo          Boolean       @default(false) @map("is_demo")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel         Hotel            @relation(fields: [hotelId], references: [id])
+  stay          Stay?            @relation(fields: [stayId], references: [id])
+  room          Room             @relation(fields: [roomId], references: [id])
+  serviceItem   ServiceItem      @relation(fields: [serviceItemId], references: [id])
+  department    Department       @relation(fields: [departmentId], references: [id])
+  assignee      StaffUser?       @relation("RequestAssignee", fields: [assigneeId], references: [id])
+  events        RequestEvent[]
+  photos        RequestPhoto[]
+  feedback      RequestFeedback?
+  notifications Notification[]
+
+  @@unique([hotelId, publicRef])
+  @@index([hotelId, departmentId, status])
+  @@index([hotelId, createdAt])
+  @@index([stayId])
+  @@map("requests")
+}
+
+// Append-only status history: the source for every response/completion KPI.
+model RequestEvent {
+  id         String         @id @default(uuid()) @db.Uuid
+  hotelId    String         @map("hotel_id") @db.Uuid
+  requestId  String         @map("request_id") @db.Uuid
+  actorType  ActorType      @map("actor_type")
+  actorId    String?        @map("actor_id") @db.Uuid
+  fromStatus RequestStatus? @map("from_status")
+  toStatus   RequestStatus  @map("to_status")
+  note       String?
+  isInternal Boolean        @default(false) @map("is_internal")
+  isDemo     Boolean        @default(false) @map("is_demo")
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  hotel   Hotel   @relation(fields: [hotelId], references: [id])
+  request Request @relation(fields: [requestId], references: [id])
+
+  @@index([hotelId, requestId, createdAt])
+  @@map("request_events")
+}
+
+model RequestPhoto {
+  id         String   @id @default(uuid()) @db.Uuid
+  hotelId    String   @map("hotel_id") @db.Uuid
+  requestId  String   @map("request_id") @db.Uuid
+  storageKey String   @map("storage_key")
+  uploadedBy String   @map("uploaded_by") @db.Uuid
+  isDemo     Boolean  @default(false) @map("is_demo")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  hotel   Hotel   @relation(fields: [hotelId], references: [id])
+  request Request @relation(fields: [requestId], references: [id])
+
+  @@map("request_photos")
+}
+
+model RequestFeedback {
+  id        String   @id @default(uuid()) @db.Uuid
+  hotelId   String   @map("hotel_id") @db.Uuid
+  requestId String   @unique @map("request_id") @db.Uuid // one rating per request
+  rating    Int // 1–5, enforced by a CHECK constraint
+  comment   String?
+  isDemo    Boolean  @default(false) @map("is_demo")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  hotel   Hotel   @relation(fields: [hotelId], references: [id])
+  request Request @relation(fields: [requestId], references: [id])
+
+  @@map("request_feedback")
+}
+
+model SlaRule {
+  id                String    @id @default(uuid()) @db.Uuid
+  hotelId           String    @map("hotel_id") @db.Uuid
+  departmentId      String    @map("department_id") @db.Uuid
+  priority          Priority
+  acceptWithinMin   Int       @map("accept_within_min")
+  completeWithinMin Int       @map("complete_within_min")
+  escalateToRole    StaffRole @default(SUPERVISOR) @map("escalate_to_role")
+  isDemo            Boolean   @default(false) @map("is_demo")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel      Hotel      @relation(fields: [hotelId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
+
+  @@unique([hotelId, departmentId, priority])
+  @@map("sla_rules")
+}
+
+model Announcement {
+  id        String    @id @default(uuid()) @db.Uuid
+  hotelId   String    @map("hotel_id") @db.Uuid
+  titleEn   String    @map("title_en")
+  titleAr   String    @map("title_ar")
+  bodyEn    String    @map("body_en")
+  bodyAr    String    @map("body_ar")
+  startsAt  DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt    DateTime? @map("ends_at") @db.Timestamptz(3)
+  isDemo    Boolean   @default(false) @map("is_demo")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel Hotel @relation(fields: [hotelId], references: [id])
+
+  @@map("announcements")
+}
+
+model Notification {
+  id               String    @id @default(uuid()) @db.Uuid
+  hotelId          String    @map("hotel_id") @db.Uuid
+  recipientStaffId String    @map("recipient_staff_id") @db.Uuid
+  type             String
+  requestId        String?   @map("request_id") @db.Uuid
+  readAt           DateTime? @map("read_at") @db.Timestamptz(3)
+  isDemo           Boolean   @default(false) @map("is_demo")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  hotel     Hotel     @relation(fields: [hotelId], references: [id])
+  recipient StaffUser @relation(fields: [recipientStaffId], references: [id])
+  request   Request?  @relation(fields: [requestId], references: [id])
+
+  @@index([hotelId, recipientStaffId, readAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  hotelId   String   @map("hotel_id") @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  diff      Json?
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  hotel Hotel @relation(fields: [hotelId], references: [id])
+
+  @@index([hotelId, createdAt])
+  @@map("audit_logs")
+}
