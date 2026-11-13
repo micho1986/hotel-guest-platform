@@ -29,6 +29,10 @@ Staff work a live queue, and managers see response times.
 
 ## Run it locally
 
+Quickest: `./scripts/local/start.sh` (needs Node 20+ and Docker Desktop running, or a local PostgreSQL 16). It sets up the database, seeds the demo hotel and starts the app.
+
+Step by step:
+
 Needs Node 22, pnpm (`corepack enable`), and PostgreSQL 16 running locally.
 
 ```bash
