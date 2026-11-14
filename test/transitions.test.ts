@@ -24,7 +24,8 @@ describe("transition table (PRD §5)", () => {
   it("matches the lifecycle in the design", () => {
     expect(TRANSITIONS.SUBMITTED).toEqual(["RECEIVED", "CANCELLED"]);
     expect(TRANSITIONS.RECEIVED).toEqual(["RECEIVED", "ACCEPTED", "CANCELLED"]);
-    expect(TRANSITIONS.ACCEPTED).toEqual(["IN_PROGRESS"]);
+    // ACCEPTED → ACCEPTED is a supervisor reassignment; ACCEPTED → CANCELLED is a supervisor cancel (M4).
+    expect(TRANSITIONS.ACCEPTED).toEqual(["ACCEPTED", "IN_PROGRESS", "CANCELLED"]);
     expect(TRANSITIONS.IN_PROGRESS).toEqual(["WAITING_FOR_GUEST", "COMPLETED"]);
     expect(TRANSITIONS.WAITING_FOR_GUEST).toEqual(["IN_PROGRESS"]);
     expect(TRANSITIONS.COMPLETED).toEqual([]);
@@ -73,6 +74,38 @@ describe("applyTransition safety", () => {
     expect(accepted).toBe(1);
     const loser = a.ok ? b : a;
     expect(loser.ok ? "" : loser.message).toBe("This request has already changed.");
+  });
+
+  it("lets exactly one of two simultaneous same-status changes succeed when both pin the read value (match)", async () => {
+    const req = await createRequest(null);
+    await adminDb.request.update({ where: { id: req.id }, data: { status: "ACCEPTED", alertedAt: null } });
+    const sameStatus = () =>
+      applyTransition(hotelId, {
+        requestId: req.id,
+        from: ["ACCEPTED"],
+        to: "ACCEPTED",
+        actor: staff,
+        patch: { alertedAt: new Date() },
+        match: { alertedAt: null },
+      });
+    const results = await Promise.all([sameStatus(), sameStatus()]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(await eventCount(req.id)).toBe(1);
+  });
+
+  it("refuses a change whose match no longer holds, and writes no event", async () => {
+    const req = await createRequest(null);
+    await adminDb.request.update({ where: { id: req.id }, data: { status: "ACCEPTED", alertedAt: new Date() } });
+    const result = await applyTransition(hotelId, {
+      requestId: req.id,
+      from: ["ACCEPTED"],
+      to: "ACCEPTED",
+      actor: staff,
+      patch: { alertedAt: new Date() },
+      match: { alertedAt: null },
+    });
+    expect(result).toEqual({ ok: false, message: "This request has already changed." });
+    expect(await eventCount(req.id)).toBe(0);
   });
 
   it("refuses a transition for a request in another hotel", async () => {
