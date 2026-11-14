@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Actor } from "@/server/auth/permissions";
 import { audit } from "@/server/audit";
 import { fail, ok, type ActionResult } from "@/server/forms";
+import { hashAccessToken } from "@/server/tokens";
 import { dbFor, id, isUniqueViolation, requiredText } from "./common";
 import { newStayToken } from "./stay-token";
 
@@ -97,4 +98,32 @@ export async function listStays(actor: Actor) {
 export async function getStay(actor: Actor, stayId: string) {
   if (!id.safeParse(stayId).success) return null;
   return dbFor(actor, "stays.view").stay.findFirst({ where: { id: stayId }, select: stayRowSelect });
+}
+
+/** Rooms a guest can be checked in to: active, not deleted, and with no active stay. */
+export async function listAvailableRooms(actor: Actor) {
+  return dbFor(actor, "stays.view").room.findMany({
+    where: { deletedAt: null, isActive: true, stays: { none: { status: "ACTIVE" } } },
+    orderBy: [{ floor: "asc" }, { number: "asc" }],
+    select: { id: true, number: true },
+  });
+}
+
+/** The stay a freshly issued token belongs to, so the card page can be opened for it. */
+export async function stayIdForToken(actor: Actor, token: string): Promise<string | null> {
+  const row = await dbFor(actor, "stays.view").stay.findFirst({
+    where: { accessTokenHash: hashAccessToken(token) },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
+/** True only if this token is the stay's current, unrevoked token. Used before printing a card. */
+export async function verifyCardToken(actor: Actor, stayId: string, token: string): Promise<boolean> {
+  if (!id.safeParse(stayId).success) return false;
+  const row = await dbFor(actor, "stays.manage").stay.findFirst({
+    where: { id: stayId, status: "ACTIVE", tokenRevokedAt: null, accessTokenHash: hashAccessToken(token) },
+    select: { id: true },
+  });
+  return row !== null;
 }

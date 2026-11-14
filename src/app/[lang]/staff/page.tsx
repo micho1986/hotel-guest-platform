@@ -29,6 +29,12 @@ export default async function StaffHome({ searchParams }: PageProps<"/[lang]/sta
         <p className="font-medium text-navy">Request queue</p>
         <p className="mt-1 text-sm text-charcoal/70">Guest requests arrive here from milestone M3.</p>
       </div>
+      {can(actor, "stays.view") && (
+        <Link href={`${STAFF_BASE}/front-desk/stays`} className={`${card} mb-4 block hover:border-champagne-dark`}>
+          <p className="font-medium text-navy">Front desk</p>
+          <p className="mt-1 text-sm text-charcoal/70">Check guests in, reissue guest links and check guests out.</p>
+        </Link>
+      )}
       {can(actor, "settings.view") && (
         <Link href={`${STAFF_BASE}/settings`} className={`${card} mb-4 block hover:border-champagne-dark`}>
           <p className="font-medium text-navy">Hotel settings</p>

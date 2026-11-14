@@ -7,9 +7,11 @@ import * as departments from "@/server/admin/departments";
 import * as hotel from "@/server/admin/hotel";
 import * as rooms from "@/server/admin/rooms";
 import * as staff from "@/server/admin/staff";
+import * as stays from "@/server/admin/stays";
 import { ForbiddenError, type Actor } from "@/server/auth/permissions";
 import { changePassword, confirmMfaSetup, login, logout, verifyMfa } from "@/server/auth/service";
 import { clearSessionCookie, currentActor, requestMeta, requireStaff, setSessionCookie, STAFF_BASE } from "@/server/auth/session-cookie";
+import { setCardToken } from "@/server/front-desk-card";
 import { fail, formValues, type ActionResult } from "@/server/forms";
 
 /**
@@ -93,6 +95,44 @@ async function run(
 }
 
 const on = (v: unknown) => v === "true";
+
+// ── Front desk ───────────────────────────────────────────────────────────────
+
+async function guarded(service: () => Promise<ActionResult>): Promise<ActionResult> {
+  try {
+    return await service();
+  } catch (e) {
+    if (e instanceof ForbiddenError) return fail("You don't have permission to do that.");
+    throw e;
+  }
+}
+
+/** Checks a guest in, then opens the room's QR card. The token travels in a short-lived cookie, never a URL. */
+export async function checkInAction(_p: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const actor = await requireStaff({ permission: "stays.manage" });
+  const result = await guarded(() => stays.checkInGuest(actor, formValues(formData)));
+  if (!result.ok || !result.secret) return result;
+  const stayId = await stays.stayIdForToken(actor, result.secret.value);
+  if (!stayId) return fail("Checked in, but the card could not be opened. Find the guest in the stay list.");
+  await setCardToken(stayId, result.secret.value);
+  redirect(`${STAFF_BASE}/front-desk/stays/${stayId}/card`);
+}
+
+/** Issues a new link for a stay and opens its card. The old card stops working at once. */
+export async function reissueTokenAction(_p: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const actor = await requireStaff({ permission: "stays.manage" });
+  const values = formValues(formData);
+  const stayId = String(values.stayId ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(stayId)) return fail("Stay not found.");
+  const result = await guarded(() => stays.reissueGuestToken(actor, values));
+  if (!result.ok || !result.secret) return result;
+  await setCardToken(stayId, result.secret.value);
+  redirect(`${STAFF_BASE}/front-desk/stays/${stayId}/card`);
+}
+
+export async function checkOutAction(_p: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  return run(formData, stays.checkOutGuest);
+}
 
 export async function updateHotelAction(_p: ActionResult | null, fd: FormData) {
   return run(fd, hotel.updateHotelProfile);

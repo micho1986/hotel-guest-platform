@@ -1,5 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { checkInGuest, checkOutGuest, getStay, listStays, reissueGuestToken } from "@/server/admin/stays";
+import {
+  checkInGuest,
+  checkOutGuest,
+  getStay,
+  listAvailableRooms,
+  listStays,
+  reissueGuestToken,
+  stayIdForToken,
+  verifyCardToken,
+} from "@/server/admin/stays";
 import { ForbiddenError, type Actor } from "@/server/auth/permissions";
 import { hashAccessToken } from "@/server/tokens";
 import { adminDb, createHotelWithData, createStaffUser } from "./fixtures";
@@ -92,6 +101,26 @@ describe("stay services", () => {
     expect(all[0].room.number).toBeDefined();
     const one = await getStay(frontDesk, all[0].id);
     expect(one?.id).toBe(all[0].id);
+  });
+
+  it("only the current token passes card verification; a reissued one does not", async () => {
+    const fresh = await adminDb.room.create({ data: { hotelId, number: "505" } });
+    const first = await checkInGuest(frontDesk, { ...input(fresh.id) });
+    const stayId = await stayIdForToken(frontDesk, (first as { secret: { value: string } }).secret.value);
+    expect(stayId).not.toBeNull();
+    const oldToken = (first as { secret: { value: string } }).secret.value;
+    expect(await verifyCardToken(frontDesk, stayId!, oldToken)).toBe(true);
+    const again = await reissueGuestToken(frontDesk, { stayId });
+    const newToken = (again as { secret: { value: string } }).secret.value;
+    expect(await verifyCardToken(frontDesk, stayId!, oldToken)).toBe(false);
+    expect(await verifyCardToken(frontDesk, stayId!, newToken)).toBe(true);
+  });
+
+  it("lists a room until a guest is in it, then drops it", async () => {
+    const room = await adminDb.room.create({ data: { hotelId, number: "606" } });
+    expect((await listAvailableRooms(frontDesk)).map((r) => r.id)).toContain(room.id);
+    await checkInGuest(frontDesk, input(room.id));
+    expect((await listAvailableRooms(frontDesk)).map((r) => r.id)).not.toContain(room.id);
   });
 
   it("an employee cannot check in", async () => {
