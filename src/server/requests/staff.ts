@@ -3,6 +3,7 @@ import { can, type Actor } from "@/server/auth/permissions";
 import { dbFor } from "@/server/admin/common";
 import { tenantDb } from "@/server/db";
 import { fail, ok, type ActionResult } from "@/server/forms";
+import { isUuid } from "@/server/ids";
 import { applyTransition } from "@/server/requests/transitions";
 import type { RequestStatus } from "@/generated/prisma/enums";
 
@@ -65,6 +66,7 @@ export async function listQueue(actor: Actor, tab: QueueTab) {
 
 /** One request with its full timeline, for staff in its department. No guest name is selected. */
 export async function getRequestForStaff(actor: Actor, requestId: string) {
+  if (!isUuid(requestId)) return null;
   const db = dbFor(actor, "requests.view");
   return db.request.findFirst({
     where: { id: requestId, ...viewScope(actor) },
@@ -84,6 +86,7 @@ export async function getRequestForStaff(actor: Actor, requestId: string) {
       room: { select: { number: true } },
       serviceItem: { select: { nameEn: true, nameAr: true } },
       department: { select: { code: true, nameEn: true } },
+      photos: { select: { id: true }, take: 1 },
       events: {
         orderBy: { createdAt: "asc" },
         select: { actorType: true, fromStatus: true, toStatus: true, note: true, isInternal: true, createdAt: true },
@@ -110,6 +113,7 @@ type Step = {
  */
 async function act(actor: Actor, requestId: string, step: Step): Promise<ActionResult> {
   if (!can(actor, "requests.manage")) return fail("You don't have permission to do that.");
+  if (!isUuid(requestId)) return fail("This request was not found.");
   const db = tenantDb(actor.hotelId);
   const request = await db.request.findFirst({
     where: { id: requestId, departmentId: { in: departmentIds(actor) } },
@@ -213,6 +217,7 @@ export async function addInternalNote(actor: Actor, requestId: string, text: str
   if (!can(actor, "requests.manage")) return fail("You don't have permission to do that.");
   const note = text.trim();
   if (!note) return fail("Write a note first.");
+  if (!isUuid(requestId)) return fail("This request was not found.");
   const db = tenantDb(actor.hotelId);
   const request = await db.request.findFirst({
     where: { id: requestId, departmentId: { in: departmentIds(actor) } },
