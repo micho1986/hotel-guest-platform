@@ -19,7 +19,7 @@ const TABS: { key: QueueTab; label: string }[] = [
 
 export default async function RequestQueue({ searchParams }: PageProps<"/[lang]/staff/requests">) {
   const actor = await requireStaff({ permission: "requests.view" });
-  const { tab } = await searchParams;
+  const { tab, transferred } = await searchParams;
   const active: QueueTab = TABS.find((t) => t.key === tab)?.key ?? "new";
   const [rows, alertCount] = await Promise.all([listQueue(actor, active), countUnreadAlerts(actor)]);
 
@@ -28,6 +28,11 @@ export default async function RequestQueue({ searchParams }: PageProps<"/[lang]/
       <AutoRefresh />
       <Link href={STAFF_BASE} className="text-sm text-navy underline">Staff home</Link>
       <h1 className="mt-2 mb-4 font-display text-3xl text-navy">Requests</h1>
+      {transferred && (
+        <p role="status" className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
+          Request transferred. It is now New in the other department&apos;s queue.
+        </p>
+      )}
       <AlertSound
         alertCount={alertCount}
         vapidPublicKey={process.env.VAPID_PUBLIC_KEY || null}
