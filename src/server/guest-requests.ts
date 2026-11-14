@@ -113,3 +113,20 @@ export async function rateGuestRequest(guest: GuestStay, requestId: string, inpu
   }
   return ok("Thank you for your feedback.");
 }
+
+/** The status steps a guest may see for one of their requests. Internal notes are never selected. */
+export async function guestTimeline(guest: GuestStay, requestId: string) {
+  return tenantDb(guest.hotelId).requestEvent.findMany({
+    where: { requestId, isInternal: false, request: { stayId: guest.stayId } },
+    orderBy: { createdAt: "asc" },
+    select: { toStatus: true, createdAt: true },
+  });
+}
+
+/** This guest's rating for one of their requests, or null if there is none. */
+export async function guestFeedback(guest: GuestStay, requestId: string) {
+  return tenantDb(guest.hotelId).requestFeedback.findFirst({
+    where: { requestId, request: { stayId: guest.stayId } },
+    select: { rating: true, comment: true },
+  });
+}
