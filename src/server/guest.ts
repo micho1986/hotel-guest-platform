@@ -11,6 +11,23 @@ export async function resolveGuestToken(token: string): Promise<GuestStay | null
   return resolveStayByTokenHash(hashAccessToken(token));
 }
 
+/** Active categories with their active, non-deleted items, in display order. */
+export function listGuestCategories(guest: GuestStay) {
+  return tenantDb(guest.hotelId).serviceCategory.findMany({
+    where: { isActive: true },
+    orderBy: { sort: "asc" },
+    include: { items: { where: { isActive: true, deletedAt: null }, orderBy: { nameEn: "asc" } } },
+  });
+}
+
+/** One orderable item, or null if it is inactive, deleted or belongs to another hotel. */
+export function getGuestItem(guest: GuestStay, itemId: string) {
+  return tenantDb(guest.hotelId).serviceItem.findFirst({
+    where: { id: itemId, isActive: true, deletedAt: null },
+    include: { category: true },
+  });
+}
+
 /** A guest's own requests only — never the room's other stays. */
 export function listGuestRequests(guest: GuestStay) {
   return tenantDb(guest.hotelId).request.findMany({
