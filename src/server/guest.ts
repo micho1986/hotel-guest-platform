@@ -5,6 +5,13 @@ import { hashAccessToken } from "@/server/tokens";
 /** Everything a guest may touch is keyed by this: one stay in one hotel. */
 export type GuestStay = { stayId: string; hotelId: string };
 
+const TOKEN_PATH_RE = /^[A-Za-z0-9_-]{1,100}$/;
+
+/** A token from the URL path, or null if it cannot be a token (checked before any database call). */
+export function guestTokenFromParams(token: string): string | null {
+  return TOKEN_PATH_RE.test(token) ? token : null;
+}
+
 /** Token from a QR code → the stay it unlocks, or null if invalid, revoked or expired. */
 export async function resolveGuestToken(token: string): Promise<GuestStay | null> {
   if (!token || token.length > 100) return null;
@@ -33,6 +40,7 @@ export function listGuestRequests(guest: GuestStay) {
   return tenantDb(guest.hotelId).request.findMany({
     where: { stayId: guest.stayId },
     orderBy: { createdAt: "desc" },
+    include: { serviceItem: { select: { nameEn: true, nameAr: true } } },
   });
 }
 
