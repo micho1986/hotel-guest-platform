@@ -39,7 +39,7 @@ describe("guest requests", () => {
     expect(r.ok).toBe(true);
     const row = await adminDb.request.findFirstOrThrow({ where: { id: r.requestId } });
     expect(row.departmentId).toBe(hkId);
-    expect(row.status).toBe("SUBMITTED");
+    expect(row.status).toBe("RECEIVED"); // M3 D5: routed to Received on submit
   });
 
   it("rejects quantity above maxQty without writing", async () => {
@@ -79,5 +79,19 @@ describe("guest requests", () => {
     const names = cats.flatMap((c) => c.items.map((i) => i.nameEn));
     expect(names).toContain("Extra towels");
     expect(names).not.toContain("Retired");
+  });
+});
+
+describe("routing on submit (M3)", () => {
+  it("leaves a submitted request Received, with a guest event then a system event", async () => {
+    const r = await submitGuestRequest(guest, { serviceItemId: towelsId, qty: 1, guestNote: null });
+    expect(r.ok).toBe(true);
+    const row = await adminDb.request.findUniqueOrThrow({ where: { id: r.requestId } });
+    expect(row.status).toBe("RECEIVED");
+    const events = await adminDb.requestEvent.findMany({ where: { requestId: r.requestId }, orderBy: { createdAt: "asc" } });
+    expect(events.map((e) => [e.actorType, e.fromStatus, e.toStatus])).toEqual([
+      ["GUEST", null, "SUBMITTED"],
+      ["SYSTEM", "SUBMITTED", "RECEIVED"],
+    ]);
   });
 });

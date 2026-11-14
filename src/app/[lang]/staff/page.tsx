@@ -25,10 +25,12 @@ export default async function StaffHome({ searchParams }: PageProps<"/[lang]/sta
         </form>
       </div>
       {denied && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Your role doesn&apos;t have access to that page.</p>}
-      <div className={`${card} mb-4`}>
-        <p className="font-medium text-navy">Request queue</p>
-        <p className="mt-1 text-sm text-charcoal/70">Guest requests arrive here from milestone M3.</p>
-      </div>
+      {can(actor, "requests.view") && (
+        <Link href={`${STAFF_BASE}/requests`} className={`${card} mb-4 block hover:border-champagne-dark`}>
+          <p className="font-medium text-navy">Requests</p>
+          <p className="mt-1 text-sm text-charcoal/70">New guest requests, what is in progress, and what finished today.</p>
+        </Link>
+      )}
       {can(actor, "stays.view") && (
         <Link href={`${STAFF_BASE}/front-desk/stays`} className={`${card} mb-4 block hover:border-champagne-dark`}>
           <p className="font-medium text-navy">Front desk</p>
