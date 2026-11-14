@@ -58,3 +58,14 @@ A hidden button is never the protection; the tests call the services directly as
 - **Read-only settings for the GM:** the GM sees the settings forms with a notice, and the server refuses their changes. Proper read-only views are polish.
 - **Several roles per person:** the data model allows it; the screens assign one role each for now.
 - **Super Admin:** a setup script, not a screen, until about five customers.
+
+## 010 — Front-desk role and token-in-path guest links
+- **Role:** `FRONT_DESK` is hotel-wide and holds `stays.view` and `stays.manage` only. It has no department, so it sees no guest requests. It may check guests in, reissue links and check out.
+- **Links:** a guest's link is `/{lang}/g/<token>`, where the token is 32 random bytes in base64url. Only its SHA-256 hash is stored, and the database resolves it through one narrow function (decision 003).
+- **Hand-off:** a freshly issued token reaches the card page in a five-minute httpOnly cookie, never in a URL, so it stays out of browser history and server logs.
+- **Why:** the front desk needs a link it can print without a guest account, and a path token keeps the guest flow free of sign-in.
+
+## 011 — No database index for one active stay per room
+- **Decision:** a room may hold several rows with status `ACTIVE`. Expired and revoked stays keep that status for history, so a partial unique index on active stays would break history and the tenant-isolation tests. No such index exists.
+- **Consequence:** the rule "one guest per room" is enforced in the service, not the database. Two check-ins to the same room at the same instant can both succeed.
+- **Follow-up:** before the pilot, lock the room row inside an explicit transaction in the check-in service. That change needs `db.ts` support for an explicit transaction.

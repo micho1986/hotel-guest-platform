@@ -47,6 +47,7 @@ const staff = [
   { email: "fb.supervisor@demo.hotel", name: "Demo F&B Supervisor", role: StaffRole.SUPERVISOR, dept: "FB" },
   { email: "eng.supervisor@demo.hotel", name: "Demo Engineering Supervisor", role: StaffRole.SUPERVISOR, dept: "ENG" },
   { email: "hk.attendant@demo.hotel", name: "Demo Room Attendant", role: StaffRole.EMPLOYEE, dept: "HK" },
+  { email: "frontdesk@demo.hotel", name: "Demo Front Desk", role: StaffRole.FRONT_DESK, dept: null },
 ];
 
 async function main() {
@@ -154,7 +155,7 @@ async function main() {
 
   console.log(`Seeded "${hotel.name}": ${departments.length} departments, ${rooms.length} rooms, ${items.length} service items, ${staff.length} staff.`);
   console.log(`Demo staff password (all accounts): ${DEMO_PASSWORD}`);
-  console.log(`Demo guest token (room 202, valid 3 days — guest pages arrive in M2): ${token}`);
+  console.log(`Demo guest token (room 202, valid 3 days): ${token}`);
 }
 
 main()
