@@ -3,6 +3,7 @@ import { isUniqueViolation } from "@/server/admin/common";
 import { tenantDb, tenantTransaction } from "@/server/db";
 import type { GuestStay } from "@/server/guest";
 import { fail, ok, type ActionResult } from "@/server/forms";
+import { applyTransition } from "@/server/requests/transitions";
 
 export type GuestRequestResult = ActionResult & { requestId?: string; publicRef?: string };
 
@@ -70,4 +71,45 @@ export async function submitGuestRequest(
     }
   }
   throw new Error("unreachable");
+}
+
+/** The request, only if it belongs to this guest's stay. Anything else looks the same as not found. */
+async function ownRequest(guest: GuestStay, requestId: string) {
+  return tenantDb(guest.hotelId).request.findFirst({
+    where: { id: requestId, stayId: guest.stayId },
+    select: { id: true, status: true },
+  });
+}
+
+/** A guest may cancel only until the request is accepted. */
+export async function cancelGuestRequest(guest: GuestStay, requestId: string): Promise<ActionResult> {
+  if (!(await ownRequest(guest, requestId))) return fail("This request was not found.");
+  const result = await applyTransition(guest.hotelId, {
+    requestId,
+    from: ["SUBMITTED", "RECEIVED"],
+    to: "CANCELLED",
+    actor: { type: "GUEST", id: null },
+  });
+  if (!result.ok) return fail(result.message);
+  return ok("Request cancelled.");
+}
+
+export type GuestRatingInput = { rating: number; comment: string | null };
+
+/** One rating per request, only once it is completed. The unique key on the request enforces "once". */
+export async function rateGuestRequest(guest: GuestStay, requestId: string, input: GuestRatingInput): Promise<ActionResult> {
+  if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) return fail("Choose a rating from 1 to 5.");
+  const request = await ownRequest(guest, requestId);
+  if (!request) return fail("This request was not found.");
+  if (request.status !== "COMPLETED") return fail("You can rate a request once it is completed.");
+  const comment = input.comment?.trim() || null;
+  try {
+    await tenantDb(guest.hotelId).requestFeedback.create({
+      data: { hotelId: guest.hotelId, requestId, rating: input.rating, comment },
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return fail("You have already rated this request.");
+    throw e;
+  }
+  return ok("Thank you for your feedback.");
 }
