@@ -290,6 +290,8 @@ model Request {
   completedAt     DateTime?     @map("completed_at") @db.Timestamptz(3)
   dueAcceptAt     DateTime?     @map("due_accept_at") @db.Timestamptz(3)
   dueCompleteAt   DateTime?     @map("due_complete_at") @db.Timestamptz(3)
+  alertedAt       DateTime?     @map("alerted_at") @db.Timestamptz(3)
+  transferredAt   DateTime?     @map("transferred_at") @db.Timestamptz(3)
   // Escalation is a flag, not a status: 0 = none, 1 = supervisor, 2 = GM.
   escalationLevel Int           @default(0) @map("escalation_level")
   isDemo          Boolean       @default(false) @map("is_demo")
