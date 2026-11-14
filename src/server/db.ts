@@ -2,6 +2,7 @@ import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import type { Prisma } from "@/generated/prisma/client";
+import { pgConfig } from "@/server/pg-connection";
 
 /**
  * Database access. App code must only use `tenantDb(hotelId)`.
@@ -18,7 +19,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function createClient(connectionString: string | undefined) {
   if (!connectionString) throw new Error("Database URL is not set");
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  return new PrismaClient({ adapter: new PrismaPg(pgConfig(connectionString)) });
 }
 
 // One pooled client per process (survives Next.js dev hot reloads).

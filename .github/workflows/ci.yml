@@ -56,6 +56,11 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+      # A fresh bearer secret per run for /api/jobs/alerts; the e2e server and the walkthrough
+      # in the next step both read it from the job environment.
+      - name: Create CI-only alert secret
+        run: echo "ALERT_JOB_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Browser walkthrough (new hotel set up through the screens)
         run: |
           pnpm start -p 3010 &

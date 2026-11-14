@@ -2,6 +2,7 @@ import "dotenv/config";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
+import { pgConfig } from "../src/server/pg-connection";
 
 /**
  * Rebuilds the test database from the migration files before the run, so the
@@ -12,7 +13,7 @@ export default async function setup() {
   if (!url) throw new Error("TEST_DATABASE_ADMIN_URL is not set (see .env.example)");
   if (!/hotel_test/.test(url)) throw new Error("Refusing to reset a database not named hotel_test");
 
-  const client = new Client({ connectionString: url });
+  const client = new Client(pgConfig(url));
   await client.connect();
   try {
     await client.query("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;");

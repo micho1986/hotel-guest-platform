@@ -85,6 +85,9 @@ model Hotel {
   announcements     Announcement[]
   notifications     Notification[]
   auditLogs         AuditLog[]
+  chatChannels      ChatChannel[]
+  chatMessages      ChatMessage[]
+  pushSubscriptions PushSubscription[]
 
   @@map("hotels")
 }
@@ -105,6 +108,7 @@ model Department {
   serviceItems ServiceItem[]
   requests     Request[]
   slaRules     SlaRule[]
+  chatChannel  ChatChannel?
 
   @@unique([hotelId, code])
   @@map("departments")
@@ -155,11 +159,11 @@ model Stay {
 }
 
 model StaffUser {
-  id           String      @id @default(uuid()) @db.Uuid
-  hotelId      String      @map("hotel_id") @db.Uuid
-  email        String
-  passwordHash String      @map("password_hash")
-  name         String
+  id                 String      @id @default(uuid()) @db.Uuid
+  hotelId            String      @map("hotel_id") @db.Uuid
+  email              String
+  passwordHash       String      @map("password_hash")
+  name               String
   // TOTP secret, encrypted with APP_ENCRYPTION_KEY (AES-256-GCM). Set on enrollment.
   mfaSecret          String?     @map("mfa_secret")
   mfaEnabledAt       DateTime?   @map("mfa_enabled_at") @db.Timestamptz(3)
@@ -168,16 +172,18 @@ model StaffUser {
   failedLoginCount   Int         @default(0) @map("failed_login_count")
   lockedUntil        DateTime?   @map("locked_until") @db.Timestamptz(3)
   lastLoginAt        DateTime?   @map("last_login_at") @db.Timestamptz(3)
-  isDemo       Boolean     @default(false) @map("is_demo")
-  deletedAt    DateTime?   @map("deleted_at") @db.Timestamptz(3)
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  isDemo             Boolean     @default(false) @map("is_demo")
+  deletedAt          DateTime?   @map("deleted_at") @db.Timestamptz(3)
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  hotel            Hotel             @relation(fields: [hotelId], references: [id])
+  hotel            Hotel              @relation(fields: [hotelId], references: [id])
   memberships      StaffMembership[]
-  assignedRequests Request[]         @relation("RequestAssignee")
+  assignedRequests Request[]          @relation("RequestAssignee")
   notifications    Notification[]
   sessions         StaffSession[]
+  chatMessages     ChatMessage[]
+  pushDevices      PushSubscription[]
 
   @@unique([hotelId, email])
   @@map("staff_users")
@@ -290,6 +296,8 @@ model Request {
   completedAt     DateTime?     @map("completed_at") @db.Timestamptz(3)
   dueAcceptAt     DateTime?     @map("due_accept_at") @db.Timestamptz(3)
   dueCompleteAt   DateTime?     @map("due_complete_at") @db.Timestamptz(3)
+  alertedAt       DateTime?     @map("alerted_at") @db.Timestamptz(3)
+  transferredAt   DateTime?     @map("transferred_at") @db.Timestamptz(3)
   // Escalation is a flag, not a status: 0 = none, 1 = supervisor, 2 = GM.
   escalationLevel Int           @default(0) @map("escalation_level")
   isDemo          Boolean       @default(false) @map("is_demo")
@@ -435,4 +443,57 @@ model AuditLog {
 
   @@index([hotelId, createdAt])
   @@map("audit_logs")
+}
+
+/// One live chat channel per department (M4). Created by a database trigger when the department is created.
+model ChatChannel {
+  id           String   @id @default(uuid()) @db.Uuid
+  hotelId      String   @map("hotel_id") @db.Uuid
+  departmentId String   @unique @map("department_id") @db.Uuid
+  isDemo       Boolean  @default(false) @map("is_demo")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  hotel      Hotel         @relation(fields: [hotelId], references: [id])
+  department Department    @relation(fields: [departmentId], references: [id])
+  messages   ChatMessage[]
+
+  @@index([hotelId])
+  @@map("chat_channels")
+}
+
+/// A message in a department channel. Append-only: the app may insert and read, never change or delete.
+model ChatMessage {
+  id            String   @id @default(uuid()) @db.Uuid
+  hotelId       String   @map("hotel_id") @db.Uuid
+  channelId     String   @map("channel_id") @db.Uuid
+  authorStaffId String   @map("author_staff_id") @db.Uuid
+  body          String
+  isDemo        Boolean  @default(false) @map("is_demo")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  hotel   Hotel       @relation(fields: [hotelId], references: [id])
+  channel ChatChannel @relation(fields: [channelId], references: [id])
+  author  StaffUser   @relation(fields: [authorStaffId], references: [id])
+
+  @@index([channelId, createdAt])
+  @@map("chat_messages")
+}
+
+/// One browser or phone that accepted push alerts for a staff member (M4). The endpoint identifies the device.
+model PushSubscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  hotelId     String   @map("hotel_id") @db.Uuid
+  staffUserId String   @map("staff_user_id") @db.Uuid
+  endpoint    String   @unique
+  p256dh      String
+  auth        String
+  isDemo      Boolean  @default(false) @map("is_demo")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel     Hotel     @relation(fields: [hotelId], references: [id])
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id])
+
+  @@index([hotelId, staffUserId])
+  @@map("push_subscriptions")
 }

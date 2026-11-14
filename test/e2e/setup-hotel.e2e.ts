@@ -11,8 +11,10 @@ import "dotenv/config";
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import sharp from "sharp";
+import { Client } from "pg";
 import { chromium, type Page } from "playwright-core";
 import { totpAt } from "../../src/server/auth/totp";
+import { pgConfig } from "../../src/server/pg-connection";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3010";
 const slug = `e2e-${Date.now()}`;
@@ -22,6 +24,13 @@ const STAFF_EMAIL = "attendant@e2e.test";
 const STAFF_PASSWORD = "Attendant-Pass-2";
 const FD_EMAIL = "frontdesk@e2e.test";
 const FD_PASSWORD = "Front-Desk-Pass-3";
+// M4 accounts
+const SUP_EMAIL = "supervisor@e2e.test";
+const SUP_PASSWORD = "Supervisor-Pass-4";
+const HK2_EMAIL = "housekeeper@e2e.test";
+const HK2_PASSWORD = "Housekeeper-Pass-5";
+const ENG_EMAIL = "engineer@e2e.test";
+const ENG_PASSWORD = "Engineer-Pass-6";
 
 let step = 0;
 function check(condition: unknown, what: string) {
@@ -43,6 +52,31 @@ async function choosePassword(page: Page, current: string, next: string) {
   await page.fill("#newPassword", next);
   await page.fill("#confirmPassword", next);
   await page.click('button:has-text("Save password")');
+}
+
+/** Creates a staff account from the settings screen and returns its one-time temporary password. */
+async function createStaff(page: Page, name: string, email: string, role: string, department: string, expectedCount: number) {
+  await page.fill("#name", name);
+  await page.fill("#email", email);
+  const form = page.locator("form", { has: page.locator("#email") });
+  await form.locator('select[name="role"]').selectOption(role);
+  await form.locator('select[name="departmentId"]').selectOption({ label: department });
+  await page.click('button:has-text("Create account")');
+  await page.waitForSelector(`text=Staff (${expectedCount})`);
+  return (await page.textContent('[data-testid="secret"]'))!.trim();
+}
+
+async function signOut(page: Page) {
+  await page.goto(`${BASE}/en/staff`);
+  await page.click('button:has-text("Sign out")');
+  await page.waitForURL("**/staff/login");
+}
+
+/** First sign-in of a new account: temporary password, then the chosen one. */
+async function firstSignIn(page: Page, email: string, temp: string, password: string, name: string) {
+  await signIn(page, email, temp);
+  await choosePassword(page, temp, password);
+  await page.waitForSelector(`text=Welcome, ${name}`);
 }
 
 async function main() {
@@ -133,6 +167,11 @@ async function main() {
     await page.click('button:has-text("Create account")');
     await page.waitForSelector("text=Staff (3)");
     const fdTemp = (await page.textContent('[data-testid="secret"]'))!.trim();
+
+    // M4 accounts: a Housekeeping supervisor, a second housekeeper and an engineer
+    const supTemp = await createStaff(page, "Sara Supervisor", SUP_EMAIL, "SUPERVISOR", "HK · Housekeeping", 4);
+    const hk2Temp = await createStaff(page, "Hamid Housekeeper", HK2_EMAIL, "EMPLOYEE", "HK · Housekeeping", 5);
+    const engTemp = await createStaff(page, "Ezra Engineer", ENG_EMAIL, "EMPLOYEE", "ENG · Engineering", 6);
 
     // Services
     await page.goto(`${BASE}/en/staff/settings/services`);
@@ -300,6 +339,125 @@ async function main() {
         return img.complete && img.naturalWidth > 0;
       });
     check(photoLoaded, "the attendant uploads a small PNG, and it opens again on the request");
+
+    // M4 — supervisors, alerts, transfer and chat
+    const jobSecret = process.env.ALERT_JOB_SECRET;
+    check(jobSecret, "ALERT_JOB_SECRET is set for the app and this walkthrough");
+    const db = new Client(pgConfig(process.env.DATABASE_ADMIN_URL!));
+    await db.connect();
+    const alertsFor = async (ref: string) =>
+      Number(
+        (
+          await db.query(
+            `SELECT count(*) FROM notifications n JOIN requests r ON r.id = n.request_id JOIN hotels h ON h.id = r.hotel_id
+             WHERE h.slug = $1 AND r.public_ref = $2 AND n.type = 'REQUEST_ALERT'`,
+            [slug, ref],
+          )
+        ).rows[0].count,
+      );
+    const runJob = async () => {
+      const res = await fetch(`${BASE}/api/jobs/alerts`, { headers: { Authorization: `Bearer ${jobSecret}` } });
+      return res.status;
+    };
+    try {
+      check((await fetch(`${BASE}/api/jobs/alerts`)).status === 401, "the alert job route refuses a call without the secret");
+
+      const urgentContext = await browser.newContext({ viewport: { width: 420, height: 800 } });
+      const urgentGuest = await urgentContext.newPage();
+      await urgentGuest.goto(`${enLink}/amenities`);
+      await urgentGuest.click('a:has-text("Extra towels")');
+      await urgentGuest.click('button:has-text("Send request")');
+      await urgentGuest.waitForURL("**/g/*/requests/*");
+      const urgentRef = (await urgentGuest.textContent("body"))!.match(/HK-\d{4}/)?.[0];
+      await urgentContext.close();
+      await db.query(
+        `UPDATE requests SET priority = 'URGENT' WHERE public_ref = $2 AND hotel_id = (SELECT id FROM hotels WHERE slug = $1)`,
+        [slug, urgentRef],
+      );
+      check((await alertsFor(urgentRef!)) === 1, "a new request alerts the Housekeeping supervisor at once");
+      check((await runJob()) === 200 && (await alertsFor(urgentRef!)) === 1, "it is not alerted again inside its 5-minute window");
+
+      // Five minutes pass: the request has been New for longer than the urgent window. Shifted from its own
+      // created_at, not SQL now(), so the check holds whatever time zone the app's driver writes in.
+      await db.query(
+        `UPDATE requests SET created_at = created_at - interval '5 minutes 5 seconds',
+                             alerted_at = alerted_at - interval '5 minutes 5 seconds'
+         WHERE public_ref = $2 AND hotel_id = (SELECT id FROM hotels WHERE slug = $1)`,
+        [slug, urgentRef],
+      );
+      check((await runJob()) === 200 && (await alertsFor(urgentRef!)) === 2, "after 5 minutes still New, the alert job alerts the supervisor again");
+      await runJob();
+      check((await alertsFor(urgentRef!)) === 2, "running the job again in the same window does not alert twice");
+
+      await signOut(page);
+      await firstSignIn(page, SUP_EMAIL, supTemp, SUP_PASSWORD, "Sara Supervisor");
+      await page.goto(`${BASE}/en/staff/requests?tab=new`);
+      await page.waitForSelector("text=1 request alert");
+      check((await page.textContent("body"))!.includes(urgentRef!), "the supervisor's queue shows the alert and the urgent request");
+
+      await page.click(`a:has-text("${urgentRef}")`);
+      await page.waitForURL("**/staff/requests/*");
+      const urgentStaffUrl = page.url();
+      await page.locator('select[name="staffId"]').selectOption({ label: "Omar Attendant" });
+      await page.getByRole("button", { name: "Assign", exact: true }).click();
+      await page.waitForSelector("text=Assigned to Omar Attendant.");
+      await page.locator('select[name="staffId"]').selectOption({ label: "Hamid Housekeeper" });
+      await page.getByRole("button", { name: "Reassign", exact: true }).click();
+      await page.waitForSelector("text=Reassigned to Hamid Housekeeper.");
+      await page.goto(`${BASE}/en/staff/requests?tab=new`);
+      check((await page.locator("text=request alert").count()) === 0, "the supervisor assigns, then reassigns; opening the request cleared the alert");
+
+      await signOut(page);
+      await firstSignIn(page, HK2_EMAIL, hk2Temp, HK2_PASSWORD, "Hamid Housekeeper");
+      await page.goto(urgentStaffUrl);
+      await page.locator('select[name="departmentId"]').selectOption({ label: "Engineering" });
+      await page.fill("#transfer-reason", "Leaking towel rail, needs engineering");
+      await page.getByRole("button", { name: "Transfer request", exact: true }).click();
+      await page.waitForURL("**/staff/requests?tab=new&transferred=1");
+      await page.waitForSelector("text=Request transferred.");
+      // Next keeps the previous page mounted but hidden, so only visible text counts.
+      await page.waitForSelector("text=Nothing here right now.");
+      check((await page.locator(`text=${urgentRef} >> visible=true`).count()) === 0, "the transferred request leaves Housekeeping's queue");
+      check(true, "the housekeeper transfers the request to Engineering with a reason");
+
+      // Chat: Omar has Housekeeping's channel open; Hamid posts; it appears without a reload.
+      const omarContext = await browser.newContext({ viewport: { width: 420, height: 800 } });
+      const omar = await omarContext.newPage();
+      await signIn(omar, STAFF_EMAIL, STAFF_PASSWORD);
+      await omar.waitForSelector("text=Welcome, Omar Attendant");
+      await omar.goto(`${BASE}/en/staff/chat`);
+      await omar.waitForSelector("text=No messages yet.");
+      const chatLine = `Linen trolley on floor 2 ${Date.now()}`;
+      await page.goto(`${BASE}/en/staff/chat`);
+      await page.fill("#body", chatLine);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await page.waitForSelector("text=Sent.");
+      await omar.waitForSelector(`text=${chatLine}`, { timeout: 10_000 });
+      check(true, "a chat message from Housekeeping appears for another member of Housekeeping within 10 seconds");
+      await omarContext.close();
+
+      await signOut(page);
+      await firstSignIn(page, ENG_EMAIL, engTemp, ENG_PASSWORD, "Ezra Engineer");
+      await page.goto(`${BASE}/en/staff/requests?tab=new`);
+      await page.waitForSelector(`text=${urgentRef}`);
+      check(true, "the transferred request appears in Engineering's queue as New");
+      await page.goto(`${BASE}/en/staff/chat`);
+      await page.waitForSelector("text=Engineering");
+      check((await page.locator(`text=${chatLine} >> visible=true`).count()) === 0, "Engineering's channel does not show Housekeeping's message");
+
+      // Concierge and Engineering have no supervisor: their New requests alert the hotel admin, who sees
+      // them on staff home (CONC request at creation, the transferred HK request on transfer).
+      await signOut(page);
+      await signIn(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+      await page.waitForURL("**/staff/mfa");
+      await page.fill("#code", code(secret));
+      await page.click('button:has-text("Verify")');
+      await page.waitForSelector("text=Welcome, Elena Admin");
+      await page.waitForSelector("text=2 request alerts");
+      check(true, "the hotel admin sees the fallback alerts for departments with no supervisor on staff home");
+    } finally {
+      await db.end();
+    }
 
     // Back to the front desk, so the guest can be checked out below
     await page.goto(`${BASE}/en/staff`);

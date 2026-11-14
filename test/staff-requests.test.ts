@@ -110,6 +110,20 @@ describe("actions", () => {
     expect(second).toEqual({ ok: false, message: "This request has already changed." });
   });
 
+  it("a New request assigned to me is listed under Mine", async () => {
+    const req = await receivedRequest(hk.id);
+    await adminDb.request.update({ where: { id: req.id }, data: { assigneeId: hkEmployee2.staffId } });
+    expect((await listQueue(hkEmployee2, "mine")).map((r) => r.id)).toContain(req.id);
+    expect((await listQueue(hkEmployee, "mine")).map((r) => r.id)).not.toContain(req.id);
+  });
+
+  it("rejecting an assigned New request clears the assignee", async () => {
+    const req = await receivedRequest(hk.id);
+    await adminDb.request.update({ where: { id: req.id }, data: { assigneeId: hkEmployee.staffId } });
+    expect((await rejectRequest(hkEmployee, req.id, "Off shift now")).ok).toBe(true);
+    expect((await adminDb.request.findUniqueOrThrow({ where: { id: req.id } })).assigneeId).toBeNull();
+  });
+
   it("reject with a reason returns the request to the queue and notifies each supervisor in the department", async () => {
     const req = await receivedRequest(hk.id);
     const r = await rejectRequest(hkEmployee, req.id, "Towels already sent to the room");

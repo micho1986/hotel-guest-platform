@@ -67,6 +67,35 @@ The front desk checks guests in from **Staff home → Front desk**. Each check-i
 
 The seed also prints a guest token for room 202, valid three days. To try the guest pages locally, open `/en/g/<token>` or `/ar/g/<token>` on the running app. Set `APP_ORIGIN` (see `.env.example`) so the QR codes point at the right address; in production it is required.
 
+## Supervisor alerts (M4)
+
+A New request that nobody has accepted alerts its department's supervisors after **5 minutes** (urgent) or **10 minutes**
+(normal), and again each window while it stays New. A department with no supervisor alerts the hotel admins instead.
+Alerts appear on the request queue with a sound, and as web push on devices where a supervisor turned alerts on.
+
+The alerts come from `GET /api/jobs/alerts`, which an external scheduler must call. Set `ALERT_JOB_SECRET` (see
+`.env.example`) and call the route every **15 seconds** where the scheduler allows it, and at least **every minute**:
+
+```bash
+curl -fsS -H "Authorization: Bearer $ALERT_JOB_SECRET" https://<your-app-origin>/api/jobs/alerts
+# → {"alerted":0}
+```
+
+- Without the header, or with the wrong secret, the route answers `401` and does nothing.
+- The job is idempotent: running it twice in the same window sends one alert per request, so overlapping or retried
+  calls are safe.
+- Any scheduler that can send a bearer header works (a cron service, the hosting platform's scheduler, or a
+  `cron` line on a server). Which one runs in production is still open; until one is set up, alerts fire only when
+  the route is called by hand.
+- Push needs `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (see `.env.example`). Without them, alerts
+  still show on the queue screen. On iPhone, web push works only after the staff site is added to the home screen.
+
+Locally, with the app running and the secret in `.env`:
+
+```bash
+while true; do curl -fsS -H "Authorization: Bearer $ALERT_JOB_SECRET" http://localhost:3000/api/jobs/alerts; echo; sleep 15; done
+```
+
 ## How tenant isolation works
 
 App code reaches the database only through `tenantDb(hotelId)` in `src/server/db.ts`:

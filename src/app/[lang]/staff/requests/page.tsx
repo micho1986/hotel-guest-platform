@@ -1,9 +1,12 @@
 import Link from "next/link";
+import { AlertSound } from "@/components/alert-sound";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { card, td, th } from "@/components/ui";
 import { requireStaff, STAFF_BASE } from "@/server/auth/session-cookie";
 import { formatHotelTime, STATUS_LABEL } from "@/server/requests/labels";
+import { countUnreadAlerts } from "@/server/requests/notifications";
 import { listQueue, type QueueTab } from "@/server/requests/staff";
+import { savePushSubscriptionAction } from "../actions";
 
 export const metadata = { title: "Requests" };
 
@@ -16,15 +19,26 @@ const TABS: { key: QueueTab; label: string }[] = [
 
 export default async function RequestQueue({ searchParams }: PageProps<"/[lang]/staff/requests">) {
   const actor = await requireStaff({ permission: "requests.view" });
-  const { tab } = await searchParams;
+  const { tab, transferred } = await searchParams;
   const active: QueueTab = TABS.find((t) => t.key === tab)?.key ?? "new";
-  const rows = await listQueue(actor, active);
+  const [rows, alertCount] = await Promise.all([listQueue(actor, active), countUnreadAlerts(actor)]);
 
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
       <AutoRefresh />
       <Link href={STAFF_BASE} className="text-sm text-navy underline">Staff home</Link>
       <h1 className="mt-2 mb-4 font-display text-3xl text-navy">Requests</h1>
+      {transferred && (
+        <p role="status" className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
+          Request transferred. It is now New in the other department&apos;s queue.
+        </p>
+      )}
+      <AlertSound
+        alertCount={alertCount}
+        vapidPublicKey={process.env.VAPID_PUBLIC_KEY || null}
+        saveSubscription={savePushSubscriptionAction}
+        hint="Open a request to clear its alert."
+      />
       <nav aria-label="Queue" className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (
           <Link

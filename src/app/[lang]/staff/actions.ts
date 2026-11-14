@@ -13,6 +13,7 @@ import { changePassword, confirmMfaSetup, login, logout, verifyMfa } from "@/ser
 import { clearSessionCookie, currentActor, requestMeta, requireStaff, setSessionCookie, STAFF_BASE } from "@/server/auth/session-cookie";
 import { setCardToken } from "@/server/front-desk-card";
 import { fail, formValues, type ActionResult } from "@/server/forms";
+import { saveSubscription } from "@/server/push";
 
 /**
  * Server actions: thin wrappers that identify the caller, hand the raw form
@@ -175,4 +176,16 @@ export async function updateServiceItemAction(_p: ActionResult | null, fd: FormD
 }
 export async function setServiceItemActiveAction(_p: ActionResult | null, fd: FormData) {
   return run(fd, (a, v) => catalogue.setServiceItemActive(a, text(v.id), on(v.active)));
+}
+
+// ── Alerts (M4) ──────────────────────────────────────────────────────────────
+
+/**
+ * Called after the browser grants push permission, from the queue or staff home. Any fully signed-in staff
+ * member may register a device: hotel admins receive fallback alerts but have no queue. The service
+ * validates the subscription.
+ */
+export async function savePushSubscriptionAction(subscription: unknown): Promise<ActionResult> {
+  const actor = await requireStaff();
+  return saveSubscription(actor, subscription);
 }
