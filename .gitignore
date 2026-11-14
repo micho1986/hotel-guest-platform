@@ -46,3 +46,6 @@ next-env.d.ts
 
 # Plan execution scratch (ledger, briefs, review packages)
 .superpowers/
+
+# Local request photo uploads (M3 disk adapter)
+.uploads/
