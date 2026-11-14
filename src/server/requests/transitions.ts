@@ -6,7 +6,9 @@ import { tenantTransaction } from "@/server/db";
 export const TRANSITIONS: Record<RequestStatus, readonly RequestStatus[]> = {
   SUBMITTED: ["RECEIVED", "CANCELLED"],
   RECEIVED: ["RECEIVED", "ACCEPTED", "CANCELLED"], // RECEIVED → RECEIVED is a rejection, recorded with its reason
-  ACCEPTED: ["IN_PROGRESS"],
+  // M4: → RECEIVED is a transfer (New in the receiving department); → ACCEPTED is a reassignment;
+  // → CANCELLED is a supervisor cancel.
+  ACCEPTED: ["RECEIVED", "ACCEPTED", "IN_PROGRESS", "CANCELLED"],
   IN_PROGRESS: ["WAITING_FOR_GUEST", "COMPLETED"],
   WAITING_FOR_GUEST: ["IN_PROGRESS"],
   COMPLETED: [],
@@ -25,6 +27,11 @@ export type TransitionInput = {
   isInternal?: boolean;
   /** Extra columns set in the same update, such as acceptedAt or assigneeId. */
   patch?: Record<string, unknown>;
+  /**
+   * Extra columns that must still hold their read value, such as the previous assigneeId. A change that
+   * keeps the status (a reassignment) needs this, or two racing callers would both match on status.
+   */
+  match?: Record<string, unknown>;
 };
 
 export type TransitionResult = { ok: true } | { ok: false; message: string };
@@ -40,13 +47,13 @@ export async function applyTransition(hotelId: string, input: TransitionInput): 
 
   return tenantTransaction(hotelId, async (tx) => {
     const current = await tx.request.findFirst({
-      where: { id: input.requestId, hotelId, status: { in: allowedFrom } },
+      where: { ...input.match, id: input.requestId, hotelId, status: { in: allowedFrom } },
       select: { status: true },
     });
     if (!current) return { ok: false, message: "This request has already changed." };
 
     const moved = await tx.request.updateMany({
-      where: { id: input.requestId, hotelId, status: current.status },
+      where: { ...input.match, id: input.requestId, hotelId, status: current.status },
       data: { status: input.to, ...input.patch },
     });
     if (moved.count !== 1) return { ok: false, message: "This request has already changed." };

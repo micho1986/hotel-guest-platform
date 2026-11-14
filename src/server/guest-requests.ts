@@ -3,6 +3,8 @@ import { isUniqueViolation } from "@/server/admin/common";
 import { tenantDb, tenantTransaction } from "@/server/db";
 import type { GuestStay } from "@/server/guest";
 import { fail, ok, type ActionResult } from "@/server/forms";
+import { defaultPushSender, pushAlertToRecipients, requestAlertPayload, type PushSender } from "@/server/push";
+import { ALERT_TYPE, alertRecipients } from "@/server/requests/notifications";
 import { applyTransition } from "@/server/requests/transitions";
 
 export type GuestRequestResult = ActionResult & { requestId?: string; publicRef?: string };
@@ -10,15 +12,20 @@ export type GuestRequestResult = ActionResult & { requestId?: string; publicRef?
 /**
  * A guest's request. Checks the stay is still open, the item is orderable,
  * the quantity and note are valid, then saves the request and its first event.
- * The department comes from the item, never from the guest.
+ * The department comes from the item, never from the guest. The department's supervisors (or, with none,
+ * the hotel admins) are alerted at once, and the alert clock starts (spec M4 Goal 1).
  */
 export async function submitGuestRequest(
   guest: GuestStay,
   input: { serviceItemId: string; qty: number; guestNote: string | null },
+  sender: PushSender | null = defaultPushSender(),
 ): Promise<GuestRequestResult> {
   const db = tenantDb(guest.hotelId);
 
-  const stay = await db.stay.findFirst({ where: { id: guest.stayId }, select: { id: true, roomId: true, status: true, tokenRevokedAt: true } });
+  const stay = await db.stay.findFirst({
+    where: { id: guest.stayId },
+    select: { id: true, roomId: true, status: true, tokenRevokedAt: true, room: { select: { number: true } } },
+  });
   if (!stay || stay.status !== "ACTIVE" || stay.tokenRevokedAt) return fail("This link is no longer active.");
 
   const item = await db.serviceItem.findFirst({
@@ -49,6 +56,7 @@ export async function submitGuestRequest(
             qty: input.qty,
             guestNote: note,
             status: "RECEIVED",
+            alertedAt: new Date(),
           },
         });
         await tx.requestEvent.create({
@@ -63,8 +71,19 @@ export async function submitGuestRequest(
             toStatus: "RECEIVED",
           },
         });
-        return { requestId: request.id, publicRef };
+        const recipients = await alertRecipients(tx, guest.hotelId, item.departmentId);
+        if (recipients.length > 0) {
+          await tx.notification.createMany({
+            data: recipients.map((recipientStaffId) => ({ hotelId: guest.hotelId, recipientStaffId, type: ALERT_TYPE, requestId: request.id })),
+          });
+        }
+        return { requestId: request.id, publicRef, recipients };
       });
+      const payload = requestAlertPayload(
+        { id: created.requestId, publicRef: created.publicRef, roomNumber: stay.room.number },
+        `New request ${created.publicRef}`,
+      );
+      await pushAlertToRecipients(guest.hotelId, created.recipients, payload, sender);
       return { ...ok(`Request ${created.publicRef} sent.`), requestId: created.requestId, publicRef: created.publicRef };
     } catch (e) {
       if (!isUniqueViolation(e) || attempt === 1) throw e;

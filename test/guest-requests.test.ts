@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getGuestRequest, listGuestCategories, type GuestStay } from "@/server/guest";
 import { submitGuestRequest } from "@/server/guest-requests";
-import { adminDb, createHotelWithData } from "./fixtures";
+import { adminDb, createHotelWithData, createStaffUser } from "./fixtures";
 
 let hotelId: string;
 let hkId: string;
@@ -93,5 +93,22 @@ describe("routing on submit (M3)", () => {
       ["GUEST", null, "SUBMITTED"],
       ["SYSTEM", "SUBMITTED", "RECEIVED"],
     ]);
+  });
+});
+
+describe("a new request alerts at once (spec Goal 1)", () => {
+  it("alerts the department's active supervisors and starts the alert clock", async () => {
+    const sup = await createStaffUser(hotelId, { email: "sup@guestreq.test", role: "SUPERVISOR", departmentId: hkId });
+    const r = await submitGuestRequest(guest, { serviceItemId: towelsId, qty: 1, guestNote: null });
+    const alerts = await adminDb.notification.findMany({ where: { requestId: r.requestId, type: "REQUEST_ALERT" } });
+    expect(alerts.map((a) => a.recipientStaffId)).toEqual([sup.id]);
+    expect((await adminDb.request.findUniqueOrThrow({ where: { id: r.requestId } })).alertedAt).not.toBeNull();
+  });
+
+  it("alerts the hotel admins when the department has no active supervisor", async () => {
+    const admin = await createStaffUser(hotelId, { email: "admin@guestreq.test", role: "HOTEL_ADMIN" });
+    const r = await submitGuestRequest(guest, { serviceItemId: conciergeItemId, qty: 1, guestNote: "A taxi at 6 please" });
+    const alerts = await adminDb.notification.findMany({ where: { requestId: r.requestId, type: "REQUEST_ALERT" } });
+    expect(alerts.map((a) => a.recipientStaffId)).toEqual([admin.id]);
   });
 });

@@ -15,6 +15,7 @@ import { z } from "zod";
 import { DEFAULT_CATEGORIES, DEFAULT_DEPARTMENTS } from "../../prisma/defaults";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { generateTemporaryPassword, hashPassword } from "../../src/server/auth/passwords";
+import { pgConfig } from "../../src/server/pg-connection";
 
 const schema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -35,7 +36,7 @@ async function main() {
     process.exit(1);
   }
   const input = parsed.data;
-  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_ADMIN_URL! }) });
+  const db = new PrismaClient({ adapter: new PrismaPg(pgConfig(process.env.DATABASE_ADMIN_URL!)) });
   try {
     if (await db.hotel.findUnique({ where: { slug: input.slug } })) {
       console.error(`A hotel with code "${input.slug}" already exists.`);

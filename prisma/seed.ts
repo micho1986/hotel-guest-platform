@@ -9,6 +9,7 @@ import "dotenv/config";
 import { hash } from "@node-rs/argon2";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, StaffRole } from "../src/generated/prisma/client";
+import { pgConfig } from "../src/server/pg-connection";
 import { generateAccessToken, hashAccessToken } from "../src/server/tokens";
 import { DEFAULT_CATEGORIES as categories, DEFAULT_DEPARTMENTS as departments } from "./defaults";
 
@@ -16,7 +17,7 @@ const DEMO_SLUG = "demo-azure-dunes-dubai";
 const DEMO_PASSWORD = "DemoHotel!2026"; // demo accounts only — documented in README
 
 const db = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_ADMIN_URL! }),
+  adapter: new PrismaPg(pgConfig(process.env.DATABASE_ADMIN_URL!)),
 });
 
 type Item = { cat: string; dept: string; nameEn: string; nameAr: string; maxQty?: number; needsNote?: boolean; safety?: boolean };

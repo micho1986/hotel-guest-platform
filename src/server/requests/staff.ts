@@ -32,7 +32,8 @@ function tabWhere(actor: Actor, tab: QueueTab): Record<string, unknown> {
     case "new":
       return { status: "RECEIVED" };
     case "mine":
-      return { assigneeId: actor.staffId, status: { in: OPEN } };
+      // M4: a New request a supervisor assigned to me is mine too, until I accept it.
+      return { assigneeId: actor.staffId, status: { in: ["RECEIVED", ...OPEN] } };
     case "in_progress":
       return { status: { in: OPEN } };
     case "done_today":
@@ -132,6 +133,8 @@ async function act(actor: Actor, requestId: string, step: Step): Promise<ActionR
     note: step.note ?? null,
     isInternal: step.isInternal ?? false,
     patch: step.patch,
+    // A transfer committed after this read moves the request away; pin the department that was checked.
+    match: { departmentId: request.departmentId },
   });
   if (!result.ok) return fail(result.message);
   if (step.afterSuccess) await step.afterSuccess(db, requestId, request.departmentId, actor);
@@ -157,6 +160,8 @@ export function rejectRequest(actor: Actor, requestId: string, reason: string) {
     label: "Rejected. It is back in the queue.",
     note,
     isInternal: true,
+    patch: { assigneeId: null }, // back in the queue for anyone, including when a supervisor had assigned it
+
     afterSuccess: async (db, id, departmentId, who) => {
       const supervisors = await db.staffMembership.findMany({
         where: { role: "SUPERVISOR", departmentId },
