@@ -11,12 +11,12 @@ export type QueueTab = "new" | "mine" | "in_progress" | "done_today";
 const OPEN: RequestStatus[] = ["ACCEPTED", "IN_PROGRESS", "WAITING_FOR_GUEST"];
 
 /** GM sees every department; everyone else sees only the departments they belong to. */
-function viewScope(actor: Actor): Record<string, unknown> {
+export function viewScope(actor: Actor): Record<string, unknown> {
   if (actor.memberships.some((m) => m.role === "GM")) return {};
   return { departmentId: { in: departmentIds(actor) } };
 }
 
-function departmentIds(actor: Actor): string[] {
+export function departmentIds(actor: Actor): string[] {
   return actor.memberships.map((m) => m.departmentId).filter((d): d is string => d !== null);
 }
 
