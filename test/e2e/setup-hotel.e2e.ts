@@ -373,18 +373,20 @@ async function main() {
         `UPDATE requests SET priority = 'URGENT' WHERE public_ref = $2 AND hotel_id = (SELECT id FROM hotels WHERE slug = $1)`,
         [slug, urgentRef],
       );
-      check((await runJob()) === 200 && (await alertsFor(urgentRef!)) === 0, "a new urgent request is not alerted inside its 5-minute window");
+      check((await alertsFor(urgentRef!)) === 1, "a new request alerts the Housekeeping supervisor at once");
+      check((await runJob()) === 200 && (await alertsFor(urgentRef!)) === 1, "it is not alerted again inside its 5-minute window");
 
       // Five minutes pass: the request has been New for longer than the urgent window. Shifted from its own
       // created_at, not SQL now(), so the check holds whatever time zone the app's driver writes in.
       await db.query(
-        `UPDATE requests SET created_at = created_at - interval '5 minutes 5 seconds'
+        `UPDATE requests SET created_at = created_at - interval '5 minutes 5 seconds',
+                             alerted_at = alerted_at - interval '5 minutes 5 seconds'
          WHERE public_ref = $2 AND hotel_id = (SELECT id FROM hotels WHERE slug = $1)`,
         [slug, urgentRef],
       );
-      check((await runJob()) === 200 && (await alertsFor(urgentRef!)) === 1, "after 5 minutes the alert job alerts the Housekeeping supervisor once");
+      check((await runJob()) === 200 && (await alertsFor(urgentRef!)) === 2, "after 5 minutes still New, the alert job alerts the supervisor again");
       await runJob();
-      check((await alertsFor(urgentRef!)) === 1, "running the job again in the same window does not alert twice");
+      check((await alertsFor(urgentRef!)) === 2, "running the job again in the same window does not alert twice");
 
       await signOut(page);
       await firstSignIn(page, SUP_EMAIL, supTemp, SUP_PASSWORD, "Sara Supervisor");
@@ -441,6 +443,17 @@ async function main() {
       await page.goto(`${BASE}/en/staff/chat`);
       await page.waitForSelector("text=Engineering");
       check((await page.locator(`text=${chatLine} >> visible=true`).count()) === 0, "Engineering's channel does not show Housekeeping's message");
+
+      // Concierge and Engineering have no supervisor: their New requests alert the hotel admin, who sees
+      // them on staff home (CONC request at creation, the transferred HK request on transfer).
+      await signOut(page);
+      await signIn(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+      await page.waitForURL("**/staff/mfa");
+      await page.fill("#code", code(secret));
+      await page.click('button:has-text("Verify")');
+      await page.waitForSelector("text=Welcome, Elena Admin");
+      await page.waitForSelector("text=2 request alerts");
+      check(true, "the hotel admin sees the fallback alerts for departments with no supervisor on staff home");
     } finally {
       await db.end();
     }

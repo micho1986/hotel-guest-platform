@@ -180,8 +180,12 @@ export async function setServiceItemActiveAction(_p: ActionResult | null, fd: Fo
 
 // ── Alerts (M4) ──────────────────────────────────────────────────────────────
 
-/** Called by the queue screen after the browser grants push permission. The subscription is validated by the service. */
+/**
+ * Called after the browser grants push permission, from the queue or staff home. Any fully signed-in staff
+ * member may register a device: hotel admins receive fallback alerts but have no queue. The service
+ * validates the subscription.
+ */
 export async function savePushSubscriptionAction(subscription: unknown): Promise<ActionResult> {
-  const actor = await requireStaff({ permission: "requests.view" });
+  const actor = await requireStaff();
   return saveSubscription(actor, subscription);
 }

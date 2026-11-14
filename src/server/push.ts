@@ -51,11 +51,17 @@ export async function saveSubscription(actor: Actor, subscription: unknown): Pro
       update: device, // a shared device alerts whoever enabled it last
     });
   } catch (e) {
-    // The endpoint is registered in another hotel (RLS hides it, the unique index still sees it).
-    if (isUniqueViolation(e)) return fail("This device is already registered elsewhere.");
+    // The endpoint is registered in another hotel. RLS hides that row, so the upsert's conflict update is
+    // refused by the policy (42501); a plain insert would hit the unique index instead.
+    if (isUniqueViolation(e) || isRlsViolation(e)) return fail("This device is already registered for alerts in another hotel.");
     throw e;
   }
   return ok("Alerts are on for this device.");
+}
+
+function isRlsViolation(e: unknown): boolean {
+  const err = e as { message?: string; cause?: { code?: string } };
+  return err?.cause?.code === "42501" || /42501|row-level security/i.test(err?.message ?? "");
 }
 
 /** The real sender, or null when VAPID keys are not configured (local development and tests). */

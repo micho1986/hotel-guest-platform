@@ -37,6 +37,7 @@ export default async function RequestQueue({ searchParams }: PageProps<"/[lang]/
         alertCount={alertCount}
         vapidPublicKey={process.env.VAPID_PUBLIC_KEY || null}
         saveSubscription={savePushSubscriptionAction}
+        hint="Open a request to clear its alert."
       />
       <nav aria-label="Queue" className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (

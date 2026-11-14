@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "@/server/auth/permissions";
 import { assignRequest, cancelStaffRequest, listAssignableStaff, reassignRequest } from "@/server/requests/supervisor";
+import type { PushSender } from "@/server/push";
 import { adminDb, createHotelWithData, createStaffUser } from "./fixtures";
 
 type Role = Actor["memberships"][number]["role"];
@@ -205,5 +206,22 @@ describe("listAssignableStaff", () => {
     expect(await listAssignableStaff(engSupervisor, hkId)).toEqual([]);
     expect(await listAssignableStaff(hkEmployee, hkId)).toEqual([]);
     expect(await listAssignableStaff(gm, hkId)).toEqual([]);
+  });
+});
+
+describe("the assignee is told", () => {
+  it("assign and reassign each notify the new assignee and push to their devices", async () => {
+    const endpoint = `https://push.example.test/assignee-${Date.now()}`;
+    await adminDb.pushSubscription.create({ data: { hotelId, staffUserId: hkEmployee2.staffId, endpoint, p256dh: "k", auth: "a" } });
+    const sent: string[] = [];
+    const sender: PushSender = { send: async (t) => (sent.push(t.endpoint), { statusCode: 201 }) };
+    const id = await requestIn("RECEIVED");
+
+    await assignRequest(hkSupervisor, id, hkEmployee.staffId, sender);
+    await reassignRequest(hkSupervisor, id, hkEmployee2.staffId, sender);
+
+    const notes = await adminDb.notification.findMany({ where: { requestId: id, type: "REQUEST_ASSIGNED" }, orderBy: { createdAt: "asc" } });
+    expect(notes.map((n) => n.recipientStaffId)).toEqual([hkEmployee.staffId, hkEmployee2.staffId]);
+    expect(sent).toEqual([endpoint]);
   });
 });

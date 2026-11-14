@@ -121,3 +121,18 @@ describe("sendAlertPush", () => {
     expect(sent).toHaveLength(0);
   });
 });
+
+describe("a device registered in another hotel", () => {
+  it("is refused with a message, not an error, and stays with its hotel", async () => {
+    const other = await createHotelWithData("push-other");
+    const otherStaff = actorFrom(await createStaffUser(other.hotelId, { email: "sup@push-other.test", role: "SUPERVISOR", departmentId: other.dept.id }));
+    const shared = subscription();
+    expect((await saveSubscription(otherStaff, shared)).ok).toBe(true);
+
+    const result = await saveSubscription(supervisor, shared);
+
+    expect(result.ok).toBe(false);
+    const row = await adminDb.pushSubscription.findUniqueOrThrow({ where: { endpoint: shared.endpoint } });
+    expect(row).toMatchObject({ hotelId: other.hotelId, staffUserId: otherStaff.staffId });
+  });
+});

@@ -15,6 +15,8 @@ type Props = {
   /** VAPID public key, or null when push is not configured on the server. */
   vapidPublicKey: string | null;
   saveSubscription: (subscription: unknown) => Promise<ActionResult>;
+  /** What clears the badge on this screen, shown after the count. */
+  hint?: string;
 };
 
 function beep(): void {
@@ -68,7 +70,7 @@ async function subscribe(vapidPublicKey: string): Promise<PushSubscription> {
  * Plays a short sound when the alert count rises while the queue is open, and offers once per device
  * to turn on push alerts (browsers only allow the permission prompt after a tap).
  */
-export function AlertSound({ alertCount, vapidPublicKey, saveSubscription }: Props) {
+export function AlertSound({ alertCount, vapidPublicKey, saveSubscription, hint }: Props) {
   const previous = useRef<number | null>(null);
   const [offer, setOffer] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -119,7 +121,7 @@ export function AlertSound({ alertCount, vapidPublicKey, saveSubscription }: Pro
     <div className="mb-4 grid gap-2">
       {alertCount > 0 && (
         <p role="status" className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
-          {alertCount === 1 ? "1 request alert" : `${alertCount} request alerts`} waiting for you. Open a request to clear its alert.
+          {alertCount === 1 ? "1 request alert" : `${alertCount} request alerts`} waiting for you.{hint ? ` ${hint}` : ""}
         </p>
       )}
       {offer && (

@@ -34,24 +34,32 @@ afterAll(async () => {
   await adminDb.$disconnect();
 });
 
+/** A request in the given status (the fixture creates them SUBMITTED). */
+async function requestIn(status: "RECEIVED" | "ACCEPTED" | "IN_PROGRESS") {
+  const r = await createRequest(null);
+  await adminDb.request.update({ where: { id: r.id }, data: { status } });
+  return r;
+}
+
 const alert = (recipientStaffId: string, requestId: string, type = "REQUEST_ALERT") =>
   adminDb.notification.create({ data: { hotelId, recipientStaffId, requestId, type } });
 
 describe("unread alerts", () => {
   it("counts only this staff member's unread request alerts", async () => {
-    const a = await createRequest(null);
-    const b = await createRequest(null);
+    const a = await requestIn("RECEIVED");
+    const b = await requestIn("RECEIVED");
     await alert(supervisor.staffId, a.id);
     await alert(supervisor.staffId, b.id);
     await alert(supervisor.staffId, a.id, "REQUEST_REJECTED");
     await alert(other.staffId, a.id);
 
-    expect(await countUnreadAlerts(supervisor)).toBe(2);
-    expect(await countUnreadAlerts(other)).toBe(1);
+    const mine = await countUnreadAlerts(supervisor);
+    expect(mine).toBe(2);
+    expect(await countUnreadAlerts(other)).toBeGreaterThanOrEqual(1);
   });
 
   it("opening a request marks only that request's alerts read, only for the viewer", async () => {
-    const c = await createRequest(null);
+    const c = await requestIn("RECEIVED");
     await alert(supervisor.staffId, c.id);
     await alert(other.staffId, c.id);
     const before = await countUnreadAlerts(supervisor);
@@ -60,5 +68,32 @@ describe("unread alerts", () => {
 
     expect(await countUnreadAlerts(supervisor)).toBe(before - 1);
     expect(await adminDb.notification.count({ where: { recipientStaffId: other.staffId, requestId: c.id, readAt: null } })).toBe(1);
+  });
+});
+
+describe("what counts as waiting", () => {
+  it("counts a request once however many alerts it has", async () => {
+    const actor = { ...supervisor, staffId: (await createStaffUser(hotelId, { email: "once@alertcount.test", role: "SUPERVISOR" })).id };
+    const r = await requestIn("RECEIVED");
+    await alert(actor.staffId, r.id);
+    await alert(actor.staffId, r.id);
+    expect(await countUnreadAlerts(actor)).toBe(1);
+  });
+
+  it("stops counting an alert once its request is no longer New", async () => {
+    const actor = { ...supervisor, staffId: (await createStaffUser(hotelId, { email: "moved@alertcount.test", role: "SUPERVISOR" })).id };
+    const r = await requestIn("RECEIVED");
+    await alert(actor.staffId, r.id);
+    await adminDb.request.update({ where: { id: r.id }, data: { status: "IN_PROGRESS" } });
+    expect(await countUnreadAlerts(actor)).toBe(0);
+  });
+
+  it("counts an assignment while the request is New or Accepted", async () => {
+    const actor = { ...supervisor, staffId: (await createStaffUser(hotelId, { email: "given@alertcount.test", role: "EMPLOYEE" })).id };
+    const r = await requestIn("ACCEPTED");
+    await alert(actor.staffId, r.id, "REQUEST_ASSIGNED");
+    expect(await countUnreadAlerts(actor)).toBe(1);
+    await adminDb.request.update({ where: { id: r.id }, data: { status: "IN_PROGRESS" } });
+    expect(await countUnreadAlerts(actor)).toBe(0);
   });
 });

@@ -1,30 +1,16 @@
 import "server-only";
 import { can, type Actor } from "@/server/auth/permissions";
-import { tenantDb } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 import { fail, ok, type ActionResult } from "@/server/forms";
 import { isUuid } from "@/server/ids";
 import { defaultPushSender, pushAlertToRecipients, requestAlertPayload, type PushSender } from "@/server/push";
+import { ALERT_TYPE, alertRecipients } from "@/server/requests/notifications";
 import { departmentIds } from "@/server/requests/staff";
 import { applyTransition } from "@/server/requests/transitions";
 import type { RequestStatus } from "@/generated/prisma/enums";
 
 /** Only requests nobody has started can move (spec: "a New or Accepted request"). */
 const TRANSFERABLE: RequestStatus[] = ["RECEIVED", "ACCEPTED"];
-
-type Db = ReturnType<typeof tenantDb>;
-
-/** Supervisors of the department; if it has none, the hotel's admins (same rule as the alert job). */
-async function alertRecipients(db: Db, departmentId: string): Promise<string[]> {
-  const supervisors = await db.staffMembership.findMany({
-    where: { role: "SUPERVISOR", departmentId },
-    select: { staffUserId: true },
-  });
-  const rows =
-    supervisors.length > 0
-      ? supervisors
-      : await db.staffMembership.findMany({ where: { role: "HOTEL_ADMIN" }, select: { staffUserId: true } });
-  return [...new Set(rows.map((r) => r.staffUserId))];
-}
 
 /**
  * Moves a New or Accepted request to another active department of the same hotel. It becomes New there:
@@ -75,11 +61,16 @@ export async function transferRequest(
   });
   if (!result.ok) return fail(result.message);
 
-  const recipients = await alertRecipients(db, toDepartmentId);
+  const recipients = await tenantTransaction(actor.hotelId, async (tx) => {
+    const ids = await alertRecipients(tx, actor.hotelId, toDepartmentId);
+    if (ids.length > 0) {
+      await tx.notification.createMany({
+        data: ids.map((recipientStaffId) => ({ hotelId: actor.hotelId, recipientStaffId, type: ALERT_TYPE, requestId })),
+      });
+    }
+    return ids;
+  });
   if (recipients.length > 0) {
-    await db.notification.createMany({
-      data: recipients.map((recipientStaffId) => ({ hotelId: actor.hotelId, recipientStaffId, type: "REQUEST_ALERT", requestId })),
-    });
     const payload = requestAlertPayload(
       { id: requestId, publicRef: request.publicRef, roomNumber: request.room.number },
       `Request ${request.publicRef} transferred to ${target.nameEn}`,

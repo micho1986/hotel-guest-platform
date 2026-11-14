@@ -82,6 +82,16 @@ describe("alert job (M4)", () => {
     expect(forThis[0].title).toContain(publicRef);
   });
 
+  it("skips a disabled supervisor: a department whose only supervisor is disabled alerts the hotel admin", async () => {
+    const laun = await adminDb.department.create({ data: { hotelId, code: "LAUN", nameEn: "Laundry", nameAr: "المغسلة" } });
+    const gone = await createStaffUser(hotelId, { email: "gone@alertjob.test", role: "SUPERVISOR", departmentId: laun.id });
+    await adminDb.staffUser.update({ where: { id: gone.id }, data: { status: "DISABLED" } });
+    const id = await receivedRequest(laun.id, 11);
+    await runAlertJob(new Date(), null);
+    const rows = await adminDb.notification.findMany({ where: { requestId: id, type: "REQUEST_ALERT" } });
+    expect(rows.map((r) => r.recipientStaffId)).toEqual([hotelAdmin.id]);
+  });
+
   it("does not alert a request that is still inside its window", async () => {
     const id = await receivedRequest(hkId, 2);
     await runAlertJob(new Date());
