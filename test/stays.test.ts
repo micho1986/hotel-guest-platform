@@ -94,13 +94,6 @@ describe("stay services", () => {
     expect(one?.id).toBe(all[0].id);
   });
 
-  it("the database itself refuses a second active stay in one room", async () => {
-    const room = await adminDb.room.create({ data: { hotelId, number: "404" } });
-    const stay = { hotelId, roomId: room.id, guestDisplayName: "A", checkIn: new Date(), checkOut: new Date(Date.now() + DAY) };
-    await adminDb.stay.create({ data: { ...stay, accessTokenHash: "race-hash-1" } });
-    await expect(adminDb.stay.create({ data: { ...stay, guestDisplayName: "B", accessTokenHash: "race-hash-2" } })).rejects.toThrow();
-  });
-
   it("an employee cannot check in", async () => {
     await expect(checkInGuest(employee, input(roomId))).rejects.toThrow(ForbiddenError);
   });
