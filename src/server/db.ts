@@ -1,6 +1,7 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
 
 /**
  * Database access. App code must only use `tenantDb(hotelId)`.
@@ -85,6 +86,22 @@ export function tenantDb(hotelId: string) {
 }
 
 export type TenantDb = ReturnType<typeof tenantDb>;
+
+/**
+ * Layer 2 for work that must succeed or fail together, such as a status change and its event.
+ * RLS is set once for the whole transaction. The callback gets the raw transaction client, so the
+ * caller must put hotelId in every where and data itself, as the transition service does.
+ */
+export async function tenantTransaction<T>(
+  hotelId: string,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  if (!UUID_RE.test(hotelId)) throw new Error("tenantDb: invalid hotel id");
+  return appDb().$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.hotel_id', ${hotelId}, TRUE)`;
+    return fn(tx);
+  });
+}
 
 /**
  * Resolves a guest token hash to its stay through the resolve_guest_stay()
