@@ -14,12 +14,14 @@ export type Actor = {
 };
 
 /** Permissions from the roles matrix (MVP plan, section 5) that exist so far. */
-export type Permission = "settings.view" | "settings.manage" | "audit.view";
+export type Permission = "settings.view" | "settings.manage" | "audit.view" | "stays.view" | "stays.manage";
 
 const GRANTS: Record<Permission, StaffRole[]> = {
   "settings.view": ["HOTEL_ADMIN", "GM"],
   "settings.manage": ["HOTEL_ADMIN"],
   "audit.view": ["HOTEL_ADMIN", "GM"],
+  "stays.view": ["FRONT_DESK", "SUPERVISOR", "GM", "HOTEL_ADMIN"],
+  "stays.manage": ["FRONT_DESK", "SUPERVISOR", "GM", "HOTEL_ADMIN"],
 };
 
 export function hasRole(actor: Pick<Actor, "memberships">, role: StaffRole): boolean {

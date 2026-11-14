@@ -8,7 +8,7 @@ import type { TenantDb } from "@/server/db";
 import { fail, ok, type ActionResult } from "@/server/forms";
 import { dbFor, id, isUniqueViolation, optionalText, requiredText } from "./common";
 
-const ROLES = ["EMPLOYEE", "SUPERVISOR", "GM", "HOTEL_ADMIN"] as const;
+const ROLES = ["EMPLOYEE", "SUPERVISOR", "GM", "HOTEL_ADMIN", "FRONT_DESK"] as const;
 const DEPARTMENT_ROLES: StaffRole[] = ["EMPLOYEE", "SUPERVISOR"];
 
 const roleFields = {

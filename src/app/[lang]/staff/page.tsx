@@ -6,7 +6,7 @@ import { logoutAction } from "./actions";
 
 export const metadata = { title: "Staff home" };
 
-const ROLE_LABEL = { EMPLOYEE: "Employee", SUPERVISOR: "Supervisor", GM: "General Manager", HOTEL_ADMIN: "Hotel Admin" };
+const ROLE_LABEL = { EMPLOYEE: "Employee", SUPERVISOR: "Supervisor", GM: "General Manager", HOTEL_ADMIN: "Hotel Admin", FRONT_DESK: "Front desk" };
 
 export default async function StaffHome({ searchParams }: PageProps<"/[lang]/staff">) {
   const actor = await requireStaff();
