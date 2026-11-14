@@ -14,6 +14,7 @@ import sharp from "sharp";
 import { Client } from "pg";
 import { chromium, type Page } from "playwright-core";
 import { totpAt } from "../../src/server/auth/totp";
+import { pgConfig } from "../../src/server/pg-connection";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3010";
 const slug = `e2e-${Date.now()}`;
@@ -342,7 +343,7 @@ async function main() {
     // M4 — supervisors, alerts, transfer and chat
     const jobSecret = process.env.ALERT_JOB_SECRET;
     check(jobSecret, "ALERT_JOB_SECRET is set for the app and this walkthrough");
-    const db = new Client({ connectionString: process.env.DATABASE_ADMIN_URL });
+    const db = new Client(pgConfig(process.env.DATABASE_ADMIN_URL!));
     await db.connect();
     const alertsFor = async (ref: string) =>
       Number(

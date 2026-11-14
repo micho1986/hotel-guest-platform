@@ -2,6 +2,7 @@ import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { tenantTransaction } from "@/server/db";
+import { pgConfig } from "@/server/pg-connection";
 import { defaultPushSender, pushAlertToRecipients, requestAlertPayload, type PushSender } from "@/server/push";
 import { isAlertDue } from "@/server/requests/alerts";
 import { ALERT_TYPE, alertRecipients } from "@/server/requests/notifications";
@@ -12,7 +13,7 @@ import { ALERT_TYPE, alertRecipients } from "@/server/requests/notifications";
  */
 let admin: PrismaClient | null = null;
 function adminDb(): PrismaClient {
-  admin ??= new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_ADMIN_URL! }) });
+  admin ??= new PrismaClient({ adapter: new PrismaPg(pgConfig(process.env.DATABASE_ADMIN_URL!)) });
   return admin;
 }
 

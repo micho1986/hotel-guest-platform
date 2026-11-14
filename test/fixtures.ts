@@ -1,15 +1,16 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { pgConfig } from "@/server/pg-connection";
 import { generateAccessToken, hashAccessToken } from "@/server/tokens";
 
 /** Admin client (bypasses RLS) — test fixtures only, like the seed and platform scripts. */
 export const adminDb = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_ADMIN_URL! }),
+  adapter: new PrismaPg(pgConfig(process.env.DATABASE_ADMIN_URL!)),
 });
 
 /** A raw client as the runtime role (RLS applies) with NO app-layer scoping. */
 export const rawAppDb = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+  adapter: new PrismaPg(pgConfig(process.env.DATABASE_URL!)),
 });
 
 const DAY = 24 * 60 * 60 * 1000;
