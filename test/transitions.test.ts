@@ -24,8 +24,9 @@ describe("transition table (PRD §5)", () => {
   it("matches the lifecycle in the design", () => {
     expect(TRANSITIONS.SUBMITTED).toEqual(["RECEIVED", "CANCELLED"]);
     expect(TRANSITIONS.RECEIVED).toEqual(["RECEIVED", "ACCEPTED", "CANCELLED"]);
-    // ACCEPTED → ACCEPTED is a supervisor reassignment; ACCEPTED → CANCELLED is a supervisor cancel (M4).
-    expect(TRANSITIONS.ACCEPTED).toEqual(["ACCEPTED", "IN_PROGRESS", "CANCELLED"]);
+    // M4: ACCEPTED → RECEIVED is a transfer (New in the receiving department); ACCEPTED → ACCEPTED is a
+    // supervisor reassignment; ACCEPTED → CANCELLED is a supervisor cancel.
+    expect(TRANSITIONS.ACCEPTED).toEqual(["RECEIVED", "ACCEPTED", "IN_PROGRESS", "CANCELLED"]);
     expect(TRANSITIONS.IN_PROGRESS).toEqual(["WAITING_FOR_GUEST", "COMPLETED"]);
     expect(TRANSITIONS.WAITING_FOR_GUEST).toEqual(["IN_PROGRESS"]);
     expect(TRANSITIONS.COMPLETED).toEqual([]);

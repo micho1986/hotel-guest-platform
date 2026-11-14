@@ -6,7 +6,9 @@ import { tenantTransaction } from "@/server/db";
 export const TRANSITIONS: Record<RequestStatus, readonly RequestStatus[]> = {
   SUBMITTED: ["RECEIVED", "CANCELLED"],
   RECEIVED: ["RECEIVED", "ACCEPTED", "CANCELLED"], // RECEIVED → RECEIVED is a rejection, recorded with its reason
-  ACCEPTED: ["ACCEPTED", "IN_PROGRESS", "CANCELLED"], // ACCEPTED → ACCEPTED is a reassignment; → CANCELLED is a supervisor cancel (M4)
+  // M4: → RECEIVED is a transfer (New in the receiving department); → ACCEPTED is a reassignment;
+  // → CANCELLED is a supervisor cancel.
+  ACCEPTED: ["RECEIVED", "ACCEPTED", "IN_PROGRESS", "CANCELLED"],
   IN_PROGRESS: ["WAITING_FOR_GUEST", "COMPLETED"],
   WAITING_FOR_GUEST: ["IN_PROGRESS"],
   COMPLETED: [],
