@@ -12,6 +12,7 @@ const ROLES = [
   ["SUPERVISOR", "Supervisor (needs department)"],
   ["GM", "General Manager (hotel-wide)"],
   ["HOTEL_ADMIN", "Hotel Admin (hotel-wide)"],
+  ["FRONT_DESK", "Front desk (hotel-wide)"],
 ] as const;
 
 export default async function StaffPage() {

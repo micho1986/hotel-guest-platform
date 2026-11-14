@@ -9,6 +9,8 @@
  */
 import "dotenv/config";
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import sharp from "sharp";
 import { chromium, type Page } from "playwright-core";
 import { totpAt } from "../../src/server/auth/totp";
 
@@ -18,6 +20,8 @@ const ADMIN_EMAIL = "admin@e2e.test";
 const ADMIN_PASSWORD = "Walkthrough-Pass-1";
 const STAFF_EMAIL = "attendant@e2e.test";
 const STAFF_PASSWORD = "Attendant-Pass-2";
+const FD_EMAIL = "frontdesk@e2e.test";
+const FD_PASSWORD = "Front-Desk-Pass-3";
 
 let step = 0;
 function check(condition: unknown, what: string) {
@@ -122,6 +126,14 @@ async function main() {
     await page.waitForSelector("text=Staff (2)");
     check(staffTemp.length >= 10, "a staff account is created and its temporary password is shown once");
 
+    // Front desk account: hotel-wide role, no department
+    await page.fill("#name", "Freya Front Desk");
+    await page.fill("#email", FD_EMAIL);
+    await page.locator("form", { has: page.locator("#email") }).locator('select[name="role"]').selectOption("FRONT_DESK");
+    await page.click('button:has-text("Create account")');
+    await page.waitForSelector("text=Staff (3)");
+    const fdTemp = (await page.textContent('[data-testid="secret"]'))!.trim();
+
     // Services
     await page.goto(`${BASE}/en/staff/settings/services`);
     const amenities = page.locator('[data-category="amenities"]');
@@ -134,6 +146,18 @@ async function main() {
     await addForm.locator('button:has-text("Add service")').click();
     await amenities.locator("text=1 service").waitFor();
     check((await amenities.locator("summary", { hasText: "Extra towels" }).count()) === 1, "a service is added to a category and routed to Housekeeping");
+
+    // Concierge item that takes a note, so guests can ask for anything else
+    const concierge = page.locator('[data-category="concierge"]');
+    await concierge.locator("summary", { hasText: "+ Add a service" }).click();
+    const conciergeForm = concierge.locator("form", { has: page.locator('button:has-text("Add service")') });
+    await conciergeForm.locator('input[name="nameEn"]').fill("Ask the concierge");
+    await conciergeForm.locator('input[name="nameAr"]').fill("اسأل الكونسيرج");
+    await conciergeForm.locator('select[name="departmentId"]').selectOption({ label: "CONC · Concierge" });
+    await conciergeForm.locator('input[name="maxQty"]').fill("1");
+    await conciergeForm.locator('input[name="needsNote"]').check();
+    await conciergeForm.locator('button:has-text("Add service")').click();
+    await concierge.locator("text=1 service").waitFor();
 
     // Audit log
     await page.goto(`${BASE}/en/staff/settings/audit`);
@@ -164,6 +188,131 @@ async function main() {
     await page.goto(`${BASE}/en/staff/settings/staff`);
     await page.waitForSelector("text=Your role doesn't have access");
     check(page.url().includes("denied=1"), "the employee is turned away from settings by the server");
+
+    // Front desk: check a guest in, then walk the guest journey through the printed links
+    await page.goto(`${BASE}/en/staff`);
+    await page.click('button:has-text("Sign out")');
+    await page.waitForURL("**/staff/login");
+    await signIn(page, FD_EMAIL, fdTemp);
+    await choosePassword(page, fdTemp, FD_PASSWORD);
+    await page.waitForSelector("text=Welcome, Freya Front Desk");
+    check((await page.locator('a[href$="/front-desk/stays"]').count()) === 1, "the front desk sees the front desk link on staff home");
+
+    await page.goto(`${BASE}/en/staff/front-desk`);
+    await page.locator('select[name="roomId"]').selectOption({ index: 0 });
+    await page.fill("#guestDisplayName", "E2E Guest");
+    const today = new Date();
+    await page.fill("#checkIn", today.toISOString().slice(0, 10));
+    await page.fill("#checkOut", new Date(today.getTime() + 86_400_000).toISOString().slice(0, 10));
+    await page.click('button:has-text("Check in and print card")');
+    await page.waitForURL("**/front-desk/stays/*/card");
+    const cardLinks = (await page.locator("p.break-all").allTextContents()).map((s) => s.trim());
+    const [enLink, arLink] = cardLinks;
+    check(cardLinks.length === 2 && enLink.startsWith(`${BASE}/en/g/`) && arLink.startsWith(`${BASE}/ar/g/`), "check-in prints a card with the English and Arabic guest links");
+
+    await page.goto(enLink);
+    check((await page.locator("text=Room Amenities").count()) >= 1, "the English link opens the category list");
+    await page.goto(arLink);
+    check((await page.locator('html[dir="rtl"]').count()) === 1, "the Arabic link renders right to left");
+
+    await page.goto(`${enLink}/amenities`);
+    await page.click('a:has-text("Extra towels")');
+    await page.click('button:has-text("Send request")');
+    await page.waitForURL("**/g/*/requests/*");
+    const towelGuestUrl = page.url();
+    const towelRef = (await page.textContent("body"))!.match(/HK-\d{4}/)?.[0];
+    await page.goto(enLink);
+    await page.click('a:has-text("My requests")');
+    await page.waitForURL("**/g/*/requests");
+    check(!!towelRef && (await page.textContent("body"))!.includes(towelRef), "the guest's catalogue request appears in My requests with its reference");
+
+    await page.goto(`${enLink}/concierge`);
+    await page.click('a:has-text("Ask the concierge")');
+    await page.fill('textarea[name="guestNote"]', "Late checkout for room 101 please");
+    await page.click('button:has-text("Send request")');
+    await page.waitForURL("**/g/*/requests/*");
+    const conciergeRef = (await page.textContent("body"))!.match(/CONC-\d{4}/)?.[0];
+    check(!!conciergeRef, "the concierge request with a note is routed to Concierge");
+
+    // M3 — requests core: the guest's request reaches Housekeeping, staff work it, the guest follows along
+    await page.goto(`${BASE}/en/staff`);
+    await page.click('button:has-text("Sign out")');
+    await page.waitForURL("**/staff/login");
+    await signIn(page, STAFF_EMAIL, STAFF_PASSWORD);
+    await page.waitForSelector("text=Welcome, Omar Attendant");
+    await page.goto(`${BASE}/en/staff/requests?tab=new`);
+    await page.waitForSelector(`text=${towelRef}`);
+    const queue = (await page.textContent("body")) ?? "";
+    check(queue.includes("Extra towels") && queue.includes(towelRef!) && !queue.includes(conciergeRef!),
+      "the towel request is in Housekeeping's queue as New, and the concierge request is not");
+
+    await page.click(`a:has-text("${towelRef}")`);
+    await page.waitForURL("**/staff/requests/*");
+    const staffUrl = page.url();
+    await page.fill('textarea[name="reason"]', "   ");
+    await page.click('button:has-text("Reject and return to queue")');
+    await page.waitForSelector("text=Give a reason for rejecting this request.");
+    await page.fill('textarea[name="reason"]', "No towels in stock until tomorrow");
+    await page.click('button:has-text("Reject and return to queue")');
+    await page.waitForSelector("text=Rejected. It is back in the queue.");
+    check(true, "a rejection with no reason is refused; with a reason the request returns to the queue");
+
+    await page.getByRole("button", { name: "Accept request", exact: true }).click();
+    await page.getByRole("button", { name: "Start", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Start", exact: true }).click();
+    await page.getByRole("button", { name: "Waiting for guest", exact: true }).waitFor();
+
+    const guestContext = await browser.newContext({ viewport: { width: 420, height: 800 } });
+    const guestPage = await guestContext.newPage();
+    await guestPage.goto(towelGuestUrl);
+    await page.fill("#wait-reason", "guest not in room");
+    await page.getByRole("button", { name: "Waiting for guest", exact: true }).click();
+    await page.getByRole("button", { name: "Resume", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Resume", exact: true }).click();
+    await page.getByRole("button", { name: "Mark completed", exact: true }).waitFor();
+    check(true, "the attendant accepts, starts, waits for the guest with a note, resumes and is ready to complete");
+
+    await page.getByRole("button", { name: "Mark completed", exact: true }).click();
+    await guestPage.getByRole("button", { name: "Send rating", exact: true }).waitFor({ timeout: 10_000 });
+    check(true, "the guest's open page shows Completed and the rating form within 10 seconds, without a reload");
+
+    await guestPage.locator('input[name="rating"][value="4"]').check();
+    await guestPage.fill('textarea[name="comment"]', "Quick, thank you");
+    await guestPage.getByRole("button", { name: "Send rating", exact: true }).click();
+    await guestPage.waitForSelector("text=You have already rated this request.");
+    check(
+      (await guestPage.locator('input[name="rating"]').count()) === 0,
+      "the guest rates 4 stars once; the rating form is then replaced, so a second rating cannot be sent",
+    );
+    await guestContext.close();
+
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: { r: 10, g: 120, b: 200 } } }).png().toBuffer();
+    writeFileSync("/tmp/e2e-photo.png", png);
+    await page.goto(staffUrl);
+    await page.setInputFiles('input[name="photo"]', "/tmp/e2e-photo.png");
+    await page.getByRole("button", { name: "Upload photo", exact: true }).click();
+    await page.locator(`img[alt="Photo for request ${towelRef}"]`).waitFor();
+    await page.reload();
+    const photoLoaded = await page
+      .locator(`img[alt="Photo for request ${towelRef}"]`)
+      .evaluate((el) => {
+        const img = el as unknown as { complete: boolean; naturalWidth: number };
+        return img.complete && img.naturalWidth > 0;
+      });
+    check(photoLoaded, "the attendant uploads a small PNG, and it opens again on the request");
+
+    // Back to the front desk, so the guest can be checked out below
+    await page.goto(`${BASE}/en/staff`);
+    await page.click('button:has-text("Sign out")');
+    await page.waitForURL("**/staff/login");
+    await signIn(page, FD_EMAIL, FD_PASSWORD);
+    await page.waitForSelector("text=Welcome, Freya Front Desk");
+
+    await page.goto(`${BASE}/en/staff/front-desk/stays`);
+    await page.locator("tr", { hasText: "E2E Guest" }).locator('button:has-text("Check out")').click();
+    await page.waitForSelector("text=Checked out");
+    await page.goto(enLink);
+    check((await page.locator("text=This link is no longer active.").count()) === 1, "after check-out the same link shows the no-longer-active message");
 
     console.log(`\nAll ${step} checks passed.`);
   } catch (e) {

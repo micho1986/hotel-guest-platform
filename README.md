@@ -59,9 +59,13 @@ The seed creates these staff accounts, all with the password `DemoHotel!2026`.
 Sign in at `/en/staff/login` with hotel code `demo-azure-dunes-dubai`. The GM and admin accounts set up 2-step verification at first sign-in.
 
 `gm@demo.hotel` · `admin@demo.hotel` · `fo.supervisor@demo.hotel` · `hk.supervisor@demo.hotel` ·
-`fb.supervisor@demo.hotel` · `eng.supervisor@demo.hotel` · `hk.attendant@demo.hotel`
+`fb.supervisor@demo.hotel` · `eng.supervisor@demo.hotel` · `hk.attendant@demo.hotel` · `frontdesk@demo.hotel`
 
-The seed also prints a one-time guest token for room 202. Guest pages arrive in M2.
+### Guest access and the front desk
+
+The front desk checks guests in from **Staff home → Front desk**. Each check-in or reissue shows a printable card with two QR codes, one for the English guest page and one for the Arabic page. The card is shown once; reissuing a link makes the old one stop working at once.
+
+The seed also prints a guest token for room 202, valid three days. To try the guest pages locally, open `/en/g/<token>` or `/ar/g/<token>` on the running app. Set `APP_ORIGIN` (see `.env.example`) so the QR codes point at the right address; in production it is required.
 
 ## How tenant isolation works
 

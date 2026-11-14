@@ -21,6 +21,7 @@ enum StaffRole {
   SUPERVISOR
   GM
   HOTEL_ADMIN
+  FRONT_DESK
 }
 
 enum StaffStatus {

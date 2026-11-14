@@ -13,12 +13,14 @@ export function ActionForm({
   action,
   children,
   submitLabel,
+  pendingLabel = "Working…",
   quiet = false,
   className = "",
 }: {
   action: FormAction;
   children?: ReactNode;
   submitLabel: string;
+  pendingLabel?: string;
   quiet?: boolean;
   className?: string;
 }) {
@@ -27,7 +29,7 @@ export function ActionForm({
     <form action={formAction} className={className}>
       {children}
       <button type="submit" disabled={pending} className={quiet ? buttonQuiet : buttonPrimary}>
-        {pending ? "Working…" : submitLabel}
+        {pending ? pendingLabel : submitLabel}
       </button>
       {state && (
         <p role="status" className={`mt-2 text-sm ${state.ok ? "text-green-800" : "text-red-700"}`}>
