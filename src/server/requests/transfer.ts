@@ -3,6 +3,7 @@ import { can, type Actor } from "@/server/auth/permissions";
 import { tenantDb } from "@/server/db";
 import { fail, ok, type ActionResult } from "@/server/forms";
 import { isUuid } from "@/server/ids";
+import { defaultPushSender, pushAlertToRecipients, requestAlertPayload, type PushSender } from "@/server/push";
 import { departmentIds } from "@/server/requests/staff";
 import { applyTransition } from "@/server/requests/transitions";
 import type { RequestStatus } from "@/generated/prisma/enums";
@@ -35,6 +36,7 @@ export async function transferRequest(
   requestId: string,
   toDepartmentId: string,
   reason: string,
+  sender: PushSender | null = defaultPushSender(),
 ): Promise<ActionResult> {
   if (!can(actor, "requests.manage")) return fail("You don't have permission to do that.");
   const why = reason.trim();
@@ -45,7 +47,13 @@ export async function transferRequest(
   const db = tenantDb(actor.hotelId);
   const request = await db.request.findFirst({
     where: { id: requestId, departmentId: { in: departmentIds(actor) } },
-    select: { status: true, departmentId: true, department: { select: { nameEn: true } } },
+    select: {
+      status: true,
+      departmentId: true,
+      publicRef: true,
+      room: { select: { number: true } },
+      department: { select: { nameEn: true } },
+    },
   });
   if (!request) return fail("You can only act on requests in your department.");
   if (!TRANSFERABLE.includes(request.status)) return fail("Only New or Accepted requests can be transferred.");
@@ -72,6 +80,11 @@ export async function transferRequest(
     await db.notification.createMany({
       data: recipients.map((recipientStaffId) => ({ hotelId: actor.hotelId, recipientStaffId, type: "REQUEST_ALERT", requestId })),
     });
+    const payload = requestAlertPayload(
+      { id: requestId, publicRef: request.publicRef, roomNumber: request.room.number },
+      `Request ${request.publicRef} transferred to ${target.nameEn}`,
+    );
+    await pushAlertToRecipients(actor.hotelId, recipients, payload, sender);
   }
   return ok(`Transferred to ${target.nameEn}.`);
 }

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "@/server/auth/permissions";
+import type { PushSender } from "@/server/push";
 import { transferRequest } from "@/server/requests/transfer";
 import { adminDb, createHotelWithData, createStaffUser } from "./fixtures";
 
@@ -106,6 +107,18 @@ describe("transferRequest", () => {
     const recipients = (await alertsFor(id)).map((n) => n.recipientStaffId);
     expect(recipients).toEqual([engSupervisor.id]);
     expect(recipients).not.toContain(hkSupervisor.id);
+  });
+
+  it("pushes the transfer alert to the receiving supervisor's devices", async () => {
+    const endpoint = `https://push.example.test/transfer-${Date.now()}`;
+    await adminDb.pushSubscription.create({ data: { hotelId, staffUserId: engSupervisor.id, endpoint, p256dh: "k", auth: "a" } });
+    const id = await requestIn("RECEIVED");
+    const sent: string[] = [];
+    const sender: PushSender = { send: async (t) => (sent.push(t.endpoint), { statusCode: 201 }) };
+
+    await transferRequest(hkEmployee, id, engId, "Engineering job", sender);
+
+    expect(sent).toEqual([endpoint]);
   });
 
   it("alerts the hotel admins when the receiving department has no supervisor", async () => {

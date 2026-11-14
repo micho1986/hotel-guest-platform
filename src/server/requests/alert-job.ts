@@ -2,6 +2,7 @@ import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { tenantTransaction } from "@/server/db";
+import { defaultPushSender, pushAlertToRecipients, requestAlertPayload, type PushSender } from "@/server/push";
 import { isAlertDue } from "@/server/requests/alerts";
 
 /**
@@ -33,10 +34,20 @@ async function recipientsFor(hotelId: string, departmentId: string): Promise<str
  * Alerts every due New request once per window. Idempotent: the claim updates alertedAt only if it still
  * holds the value this run read, so two runs, or two servers, cannot both alert the same window.
  */
-export async function runAlertJob(now: Date): Promise<{ alerted: number }> {
+export async function runAlertJob(now: Date, sender: PushSender | null = defaultPushSender()): Promise<{ alerted: number }> {
   const candidates = await adminDb().request.findMany({
     where: { status: "RECEIVED" },
-    select: { id: true, hotelId: true, departmentId: true, priority: true, status: true, createdAt: true, alertedAt: true },
+    select: {
+      id: true,
+      hotelId: true,
+      departmentId: true,
+      priority: true,
+      status: true,
+      createdAt: true,
+      alertedAt: true,
+      publicRef: true,
+      room: { select: { number: true } },
+    },
   });
 
   let alerted = 0;
@@ -61,7 +72,13 @@ export async function runAlertJob(now: Date): Promise<{ alerted: number }> {
       });
       return true;
     });
-    if (claimed) alerted++;
+    if (!claimed) continue;
+    alerted++;
+    const payload = requestAlertPayload(
+      { id: r.id, publicRef: r.publicRef, roomNumber: r.room.number },
+      `Request ${r.publicRef} is still waiting`,
+    );
+    await pushAlertToRecipients(r.hotelId, recipients, payload, sender);
   }
   return { alerted };
 }

@@ -87,6 +87,7 @@ model Hotel {
   auditLogs         AuditLog[]
   chatChannels      ChatChannel[]
   chatMessages      ChatMessage[]
+  pushSubscriptions PushSubscription[]
 
   @@map("hotels")
 }
@@ -176,12 +177,13 @@ model StaffUser {
   createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  hotel            Hotel             @relation(fields: [hotelId], references: [id])
+  hotel            Hotel              @relation(fields: [hotelId], references: [id])
   memberships      StaffMembership[]
-  assignedRequests Request[]         @relation("RequestAssignee")
+  assignedRequests Request[]          @relation("RequestAssignee")
   notifications    Notification[]
   sessions         StaffSession[]
   chatMessages     ChatMessage[]
+  pushDevices      PushSubscription[]
 
   @@unique([hotelId, email])
   @@map("staff_users")
@@ -475,4 +477,23 @@ model ChatMessage {
 
   @@index([channelId, createdAt])
   @@map("chat_messages")
+}
+
+/// One browser or phone that accepted push alerts for a staff member (M4). The endpoint identifies the device.
+model PushSubscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  hotelId     String   @map("hotel_id") @db.Uuid
+  staffUserId String   @map("staff_user_id") @db.Uuid
+  endpoint    String   @unique
+  p256dh      String
+  auth        String
+  isDemo      Boolean  @default(false) @map("is_demo")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  hotel     Hotel     @relation(fields: [hotelId], references: [id])
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id])
+
+  @@index([hotelId, staffUserId])
+  @@map("push_subscriptions")
 }

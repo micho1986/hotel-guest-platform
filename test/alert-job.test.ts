@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { PushSender } from "@/server/push";
 import { runAlertJob } from "@/server/requests/alert-job";
 import { adminDb, createHotelWithData, createStaffUser } from "./fixtures";
 
@@ -61,6 +62,24 @@ describe("alert job (M4)", () => {
     await runAlertJob(new Date());
     const rows = await adminDb.notification.findMany({ where: { requestId: engRequestId, type: "REQUEST_ALERT" } });
     expect(rows.map((r) => r.recipientStaffId)).toEqual([hotelAdmin.id]);
+  });
+
+  it("pushes each alert once to the recipient's devices, linking the request by reference", async () => {
+    const endpoint = `https://push.example.test/alertjob-${Date.now()}`;
+    await adminDb.pushSubscription.create({ data: { hotelId, staffUserId: hkSupervisor.id, endpoint, p256dh: "k", auth: "a" } });
+    const id = await receivedRequest(hkId, 11, "URGENT");
+    const { publicRef } = await adminDb.request.findUniqueOrThrow({ where: { id } });
+    const sent: { endpoint: string; payload: string }[] = [];
+    const sender: PushSender = { send: async (t, payload) => (sent.push({ endpoint: t.endpoint, payload }), { statusCode: 201 }) };
+    const now = new Date();
+
+    await runAlertJob(now, sender);
+    await runAlertJob(now, sender);
+
+    const mine = sent.filter((s) => s.endpoint === endpoint).map((s) => JSON.parse(s.payload) as { title: string; url: string });
+    const forThis = mine.filter((p) => p.url.endsWith(`/staff/requests/${id}`));
+    expect(forThis).toHaveLength(1);
+    expect(forThis[0].title).toContain(publicRef);
   });
 
   it("does not alert a request that is still inside its window", async () => {
