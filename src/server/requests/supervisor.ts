@@ -4,16 +4,19 @@ import { tenantDb } from "@/server/db";
 import { fail, ok, type ActionResult } from "@/server/forms";
 import { isUuid } from "@/server/ids";
 import { applyTransition } from "@/server/requests/transitions";
-import type { RequestStatus } from "@/generated/prisma/enums";
+import type { RequestStatus, StaffRole } from "@/generated/prisma/enums";
 
 /** Statuses in which a supervisor may assign, reassign or cancel (spec: "New or Accepted"). */
 const SUPERVISABLE: RequestStatus[] = ["RECEIVED", "ACCEPTED"];
+/** Roles that can be given a request: the department's employees and supervisors. */
+const ASSIGNABLE_ROLES: StaffRole[] = ["EMPLOYEE", "SUPERVISOR"];
+const ACTIVE_STAFF = { status: "ACTIVE", deletedAt: null } as const;
 
 type SupervisedRequest = { id: string; status: RequestStatus; assigneeId: string | null; departmentId: string };
 type Lookup<T> = { ok: true; value: T } | { ok: false; result: ActionResult };
 
 /** The departments this actor supervises. A GM or employee supervises none. */
-function supervisedDepartmentIds(actor: Actor): string[] {
+export function supervisedDepartmentIds(actor: Actor): string[] {
   return actor.memberships
     .filter((m) => m.role === "SUPERVISOR")
     .map((m) => m.departmentId)
@@ -45,8 +48,8 @@ async function findDepartmentMember(hotelId: string, departmentId: string, staff
     where: {
       staffUserId: staffId,
       departmentId,
-      role: { in: ["EMPLOYEE", "SUPERVISOR"] },
-      staffUser: { status: "ACTIVE", deletedAt: null },
+      role: { in: ASSIGNABLE_ROLES },
+      staffUser: ACTIVE_STAFF,
     },
     select: { staffUser: { select: { name: true } } },
   });
@@ -109,4 +112,15 @@ export async function cancelStaffRequest(actor: Actor, requestId: string, reason
   });
   if (!result.ok) return fail(result.message);
   return ok("Request cancelled.");
+}
+
+/** The people a supervisor can give this department's requests to, by name. Empty for anyone else. */
+export async function listAssignableStaff(actor: Actor, departmentId: string): Promise<{ id: string; name: string }[]> {
+  if (!can(actor, "requests.manage") || !supervisedDepartmentIds(actor).includes(departmentId)) return [];
+  const rows = await tenantDb(actor.hotelId).staffMembership.findMany({
+    where: { departmentId, role: { in: ASSIGNABLE_ROLES }, staffUser: ACTIVE_STAFF },
+    select: { staffUser: { select: { id: true, name: true } } },
+  });
+  const unique = new Map(rows.map((r) => [r.staffUser.id, r.staffUser.name]));
+  return [...unique].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }

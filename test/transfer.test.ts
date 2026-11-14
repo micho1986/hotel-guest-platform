@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "@/server/auth/permissions";
 import type { PushSender } from "@/server/push";
-import { transferRequest } from "@/server/requests/transfer";
+import { listTransferTargets, transferRequest } from "@/server/requests/transfer";
 import { adminDb, createHotelWithData, createStaffUser } from "./fixtures";
 
 type Role = Actor["memberships"][number]["role"];
@@ -167,5 +167,21 @@ describe("transferRequest", () => {
     ]);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(await events(id)).toHaveLength(1);
+  });
+});
+
+describe("listTransferTargets", () => {
+  it("lists the hotel's other active departments for a member of the request's department", async () => {
+    const targets = await listTransferTargets(hkEmployee, hkId);
+    const ids = targets.map((t) => t.id);
+    expect(ids).toEqual(expect.arrayContaining([engId, foId]));
+    expect(ids).not.toContain(hkId);
+    expect(ids).not.toContain(closedId);
+    expect(ids).not.toContain(otherHotelDeptId);
+  });
+
+  it("returns nothing to staff outside that department and to the GM", async () => {
+    expect(await listTransferTargets(engEmployee, hkId)).toEqual([]);
+    expect(await listTransferTargets(gm, hkId)).toEqual([]);
   });
 });

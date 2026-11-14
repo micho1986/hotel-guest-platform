@@ -15,6 +15,7 @@ const POSTING_ROLES: StaffRole[] = ["EMPLOYEE", "SUPERVISOR"];
 /** Roles that may read every channel of the hotel. */
 const READ_ALL_ROLES: StaffRole[] = ["SUPERVISOR", "GM"];
 
+export type ChatChannelView = { id: string; departmentName: string; canPost: boolean };
 export type ChatMessageView = { id: string; body: string; authorName: string; createdAt: Date };
 export type ChatRead = { ok: true; messages: ChatMessageView[] } | { ok: false; message: string };
 
@@ -106,4 +107,25 @@ export async function listChatMessages(actor: Actor, channelId: string, sinceId?
     ok: true,
     messages: rows.map((r) => ({ id: r.id, body: r.body, authorName: r.author.name, createdAt: r.createdAt })),
   };
+}
+
+/** The channels this actor may read, by department name, each marked with whether they may post there. */
+export async function listChatChannels(actor: Actor): Promise<ChatChannelView[]> {
+  if (!isFullySignedIn(actor)) return [];
+  const db = tenantDb(actor.hotelId);
+  const memberships = await currentMemberships(db, actor);
+  const readsAll = memberships.some((m) => READ_ALL_ROLES.includes(m.role));
+  const ownDepartments = memberships.flatMap((m) => (m.departmentId ? [m.departmentId] : []));
+  if (!readsAll && ownDepartments.length === 0) return [];
+
+  const channels = await db.chatChannel.findMany({
+    where: readsAll ? {} : { departmentId: { in: ownDepartments } },
+    select: { id: true, departmentId: true, department: { select: { nameEn: true } } },
+    orderBy: { department: { nameEn: "asc" } },
+  });
+  return channels.map((c) => ({
+    id: c.id,
+    departmentName: c.department.nameEn,
+    canPost: memberships.some((m) => m.departmentId === c.departmentId && POSTING_ROLES.includes(m.role)),
+  }));
 }

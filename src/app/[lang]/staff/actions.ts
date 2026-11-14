@@ -13,6 +13,7 @@ import { changePassword, confirmMfaSetup, login, logout, verifyMfa } from "@/ser
 import { clearSessionCookie, currentActor, requestMeta, requireStaff, setSessionCookie, STAFF_BASE } from "@/server/auth/session-cookie";
 import { setCardToken } from "@/server/front-desk-card";
 import { fail, formValues, type ActionResult } from "@/server/forms";
+import { saveSubscription } from "@/server/push";
 
 /**
  * Server actions: thin wrappers that identify the caller, hand the raw form
@@ -175,4 +176,12 @@ export async function updateServiceItemAction(_p: ActionResult | null, fd: FormD
 }
 export async function setServiceItemActiveAction(_p: ActionResult | null, fd: FormData) {
   return run(fd, (a, v) => catalogue.setServiceItemActive(a, text(v.id), on(v.active)));
+}
+
+// ── Alerts (M4) ──────────────────────────────────────────────────────────────
+
+/** Called by the queue screen after the browser grants push permission. The subscription is validated by the service. */
+export async function savePushSubscriptionAction(subscription: unknown): Promise<ActionResult> {
+  const actor = await requireStaff({ permission: "requests.view" });
+  return saveSubscription(actor, subscription);
 }

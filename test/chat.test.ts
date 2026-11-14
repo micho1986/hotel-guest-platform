@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "@/server/auth/permissions";
 import { createDepartment } from "@/server/admin/departments";
-import { CHAT_MAX_BODY, listChatMessages, postChatMessage } from "@/server/chat";
+import { CHAT_MAX_BODY, listChatChannels, listChatMessages, postChatMessage } from "@/server/chat";
 import { adminDb, createHotelWithData, createStaffUser } from "./fixtures";
 
 type Role = Actor["memberships"][number]["role"];
@@ -142,5 +142,28 @@ describe("postChatMessage and listChatMessages", () => {
   it("refuses a malformed channel id", async () => {
     expect((await listChatMessages(hkEmployee, "nope")).ok).toBe(false);
     expect((await postChatMessage(hkEmployee, "nope", "hi")).ok).toBe(false);
+  });
+});
+
+describe("listChatChannels", () => {
+  it("a member sees their own department's channel and may post there", async () => {
+    const channels = await listChatChannels(hkEmployee);
+    expect(channels.map((c) => ({ id: c.id, canPost: c.canPost }))).toEqual([{ id: hkChannel, canPost: true }]);
+    expect(channels[0].departmentName).toBe("Housekeeping");
+  });
+
+  it("a supervisor sees every channel of the hotel and may post only in their own", async () => {
+    const channels = await listChatChannels(engSupervisor);
+    const byId = new Map(channels.map((c) => [c.id, c.canPost]));
+    expect(byId.get(hkChannel)).toBe(false);
+    expect(byId.get(engChannel)).toBe(true);
+    expect(byId.has(otherHotelChannel)).toBe(false);
+  });
+
+  it("the GM sees every channel and posts in none; a hotel admin with no department sees none", async () => {
+    const channels = await listChatChannels(gm);
+    expect(channels.map((c) => c.id)).toEqual(expect.arrayContaining([hkChannel, engChannel]));
+    expect(channels.every((c) => !c.canPost)).toBe(true);
+    expect(await listChatChannels(admin)).toEqual([]);
   });
 });

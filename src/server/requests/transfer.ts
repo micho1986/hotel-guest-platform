@@ -88,3 +88,14 @@ export async function transferRequest(
   }
   return ok(`Transferred to ${target.nameEn}.`);
 }
+
+/** The departments a member of `fromDepartmentId` can transfer a request to. Empty for anyone else. */
+export async function listTransferTargets(actor: Actor, fromDepartmentId: string): Promise<{ id: string; name: string }[]> {
+  if (!can(actor, "requests.manage") || !departmentIds(actor).includes(fromDepartmentId)) return [];
+  const rows = await tenantDb(actor.hotelId).department.findMany({
+    where: { isActive: true, id: { not: fromDepartmentId } },
+    orderBy: { nameEn: "asc" },
+    select: { id: true, nameEn: true },
+  });
+  return rows.map((d) => ({ id: d.id, name: d.nameEn }));
+}

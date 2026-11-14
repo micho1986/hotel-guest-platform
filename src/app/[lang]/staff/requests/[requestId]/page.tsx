@@ -6,8 +6,24 @@ import { card, input, label } from "@/components/ui";
 import { can } from "@/server/auth/permissions";
 import { requireStaff, STAFF_BASE } from "@/server/auth/session-cookie";
 import { formatHotelTime, STATUS_LABEL } from "@/server/requests/labels";
+import { markRequestAlertsRead } from "@/server/requests/notifications";
 import { getRequestForStaff } from "@/server/requests/staff";
-import { acceptAction, completeAction, noteAction, photoAction, rejectAction, resumeAction, startAction, waitAction } from "./actions";
+import { listAssignableStaff } from "@/server/requests/supervisor";
+import { listTransferTargets } from "@/server/requests/transfer";
+import {
+  acceptAction,
+  assignAction,
+  cancelAction,
+  completeAction,
+  noteAction,
+  photoAction,
+  reassignAction,
+  rejectAction,
+  resumeAction,
+  startAction,
+  transferAction,
+  waitAction,
+} from "./actions";
 
 export const metadata = { title: "Request" };
 
@@ -22,6 +38,13 @@ export default async function RequestDetail({ params }: PageProps<"/[lang]/staff
   const canManage = can(actor, "requests.manage");
   const mine = r.assigneeId === actor.staffId;
   const hiddenId = <input type="hidden" name="requestId" value={r.id} />;
+  // M4: supervisors may assign, reassign and cancel; any member may transfer. Only New or Accepted requests.
+  const open = r.status === "RECEIVED" || r.status === "ACCEPTED";
+  const [assignable, transferTargets] = open
+    ? await Promise.all([listAssignableStaff(actor, r.departmentId), listTransferTargets(actor, r.departmentId)])
+    : [[], []];
+  const assigneeName = assignable.find((s) => s.id === r.assigneeId)?.name;
+  await markRequestAlertsRead(actor, r.id);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
@@ -72,6 +95,55 @@ export default async function RequestDetail({ params }: PageProps<"/[lang]/staff
               <textarea id="note" name="note" required maxLength={1000} rows={2} className={`${input} mb-3`} />
             </ActionForm>
           </div>
+        </section>
+      )}
+
+      {assignable.length > 0 && (
+        <section className={`${card} mb-4`} aria-labelledby="supervisor">
+          <h2 id="supervisor" className="mb-1 font-medium text-navy">Supervisor</h2>
+          <p className="mb-4 text-sm text-charcoal/70">
+            {r.assigneeId ? `With ${assigneeName ?? "someone outside this department"}.` : "Nobody has this request yet."}
+          </p>
+          <div className="grid gap-6">
+            <ActionForm action={r.assigneeId ? reassignAction : assignAction} submitLabel={r.assigneeId ? "Reassign" : "Assign"}>
+              {hiddenId}
+              <label className={label} htmlFor="assignee">{r.assigneeId ? "Give it to" : "Assign to"}</label>
+              <select id="assignee" name="staffId" required className={`${input} mb-3`} defaultValue="">
+                <option value="" disabled>Choose a person</option>
+                {assignable
+                  .filter((s) => s.id !== r.assigneeId)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+              </select>
+            </ActionForm>
+            <ActionForm action={cancelAction} submitLabel="Cancel request" quiet>
+              {hiddenId}
+              <label className={label} htmlFor="cancel-reason">Reason for cancelling (kept for the team)</label>
+              <textarea id="cancel-reason" name="reason" required maxLength={500} rows={2} className={`${input} mb-3`} />
+            </ActionForm>
+          </div>
+        </section>
+      )}
+
+      {transferTargets.length > 0 && (
+        <section className={`${card} mb-4`} aria-labelledby="transfer">
+          <h2 id="transfer" className="mb-1 font-medium text-navy">Transfer</h2>
+          <p className="mb-4 text-sm text-charcoal/70">
+            Moves the request to another department. It becomes New there and their supervisor is alerted.
+          </p>
+          <ActionForm action={transferAction} submitLabel="Transfer request" quiet>
+            {hiddenId}
+            <label className={label} htmlFor="transfer-to">Department</label>
+            <select id="transfer-to" name="departmentId" required className={`${input} mb-3`} defaultValue="">
+              <option value="" disabled>Choose a department</option>
+              {transferTargets.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <label className={label} htmlFor="transfer-reason">Why (kept for the team)</label>
+            <textarea id="transfer-reason" name="reason" required maxLength={500} rows={2} className={`${input} mb-3`} />
+          </ActionForm>
         </section>
       )}
 

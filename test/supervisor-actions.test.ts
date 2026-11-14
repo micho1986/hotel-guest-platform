@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "@/server/auth/permissions";
-import { assignRequest, cancelStaffRequest, reassignRequest } from "@/server/requests/supervisor";
+import { assignRequest, cancelStaffRequest, listAssignableStaff, reassignRequest } from "@/server/requests/supervisor";
 import { adminDb, createHotelWithData, createStaffUser } from "./fixtures";
 
 type Role = Actor["memberships"][number]["role"];
@@ -189,5 +189,21 @@ describe("who may act", () => {
 
   it("refuses a malformed request id", async () => {
     expect((await assignRequest(hkSupervisor, "not-a-uuid", hkEmployee.staffId)).ok).toBe(false);
+  });
+});
+
+describe("listAssignableStaff", () => {
+  it("lists the department's active employees and supervisors for its supervisor, by name", async () => {
+    const people = await listAssignableStaff(hkSupervisor, hkId);
+    const ids = people.map((p) => p.id);
+    expect(ids).toEqual(expect.arrayContaining([hkEmployee.staffId, hkEmployee2.staffId, hkSupervisor.staffId, hkSupervisor2.staffId]));
+    expect(ids).not.toContain(engEmployee.staffId);
+    expect(people.find((p) => p.id === hkEmployee.staffId)?.name).toBe(hkEmployee.name);
+  });
+
+  it("returns nobody to a supervisor of another department, an employee or the GM", async () => {
+    expect(await listAssignableStaff(engSupervisor, hkId)).toEqual([]);
+    expect(await listAssignableStaff(hkEmployee, hkId)).toEqual([]);
+    expect(await listAssignableStaff(gm, hkId)).toEqual([]);
   });
 });

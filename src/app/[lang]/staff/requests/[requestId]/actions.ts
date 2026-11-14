@@ -7,6 +7,8 @@ import { fail, formValues, type ActionResult } from "@/server/forms";
 import { isUuid } from "@/server/ids";
 import { MAX_PHOTO_BYTES, uploadRequestPhoto } from "@/server/requests/photos";
 import * as requests from "@/server/requests/staff";
+import * as supervisor from "@/server/requests/supervisor";
+import { transferRequest } from "@/server/requests/transfer";
 
 /**
  * Server actions for one request: each identifies the caller, checks the id, calls the service
@@ -59,6 +61,24 @@ export async function completeAction(_prev: ActionResult | null, formData: FormD
 
 export async function noteAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   return run(formData, (a, id, v) => requests.addInternalNote(a, id, text(v.note)));
+}
+
+// ── M4: supervisor and transfer ─────────────────────────────────────────────
+
+export async function assignAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  return run(formData, (a, id, v) => supervisor.assignRequest(a, id, text(v.staffId)));
+}
+
+export async function reassignAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  return run(formData, (a, id, v) => supervisor.reassignRequest(a, id, text(v.staffId)));
+}
+
+export async function cancelAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  return run(formData, (a, id, v) => supervisor.cancelStaffRequest(a, id, text(v.reason)));
+}
+
+export async function transferAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  return run(formData, (a, id, v) => transferRequest(a, id, text(v.departmentId), text(v.reason)));
 }
 
 /** The photo is read as bytes, not through formValues, which drops files. Size is checked before reading it all. */
