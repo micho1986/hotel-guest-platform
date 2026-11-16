@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Currency is AED; prices are whole units from the Ostro file, stored as `Decimal(12,2)`.
-- Menu copy is exactly as in Ostro: 17 categories, 120 products. No name, description, price or availability is edited by the import.
+- Menu copy is exactly as in Ostro: 17 categories, 127 products. No name, description, price or availability is edited by the import.
 - `nameAr` holds the English name until Arabic translations exist (ruling R1).
 - Payment: pay on delivery only. The app records no payment.
 - Each order line quantity is 1 to 20 inclusive.
@@ -136,9 +136,9 @@ const sql = readFileSync("prisma/data/ostro-menu.sql", "utf8");
 const menu = parseOstroMenu(sql);
 
 describe("parseOstroMenu", () => {
-  it("reads all 17 categories and 120 products", () => {
+  it("reads all 17 categories and 127 products", () => {
     expect(menu.categories).toHaveLength(17);
-    expect(menu.products).toHaveLength(120);
+    expect(menu.products).toHaveLength(127);
   });
 
   it("unescapes doubled single quotes", () => {
@@ -153,8 +153,10 @@ describe("parseOstroMenu", () => {
     });
   });
 
-  it("reads an unavailable product as available: false", () => {
-    expect(menu.products.some((p) => p.available === false)).toBe(true);
+  it("reads available = 0 as available: false", () => {
+    const inline = `INSERT OR IGNORE INTO products (id, category_id, name, description, price, old_price, images, available, sort) VALUES
+  (1, 1, 'Sold out pie', '', 10, NULL, '[]', 0, 1);`;
+    expect(parseOstroMenu(inline).products[0].available).toBe(false);
   });
 });
 ```
@@ -214,15 +216,15 @@ beforeAll(async () => { hotelId = (await createHotelWithData("rs-import")).hotel
 afterAll(async () => { await adminDb.$disconnect(); });
 
 describe("importOstroMenu", () => {
-  it("creates 17 categories and 120 items plus the hidden umbrella item", async () => {
+  it("creates 17 categories and 127 items plus the hidden umbrella item", async () => {
     await importOstroMenu(hotelId, menu);
     expect(await adminDb.serviceCategory.count({ where: { hotelId, key: { startsWith: "ostro-" } } })).toBe(17);
-    expect(await adminDb.serviceItem.count({ where: { hotelId, externalKey: { startsWith: "ostro-" } } })).toBe(120);
+    expect(await adminDb.serviceItem.count({ where: { hotelId, externalKey: { startsWith: "ostro-" } } })).toBe(127);
   });
 
   it("is idempotent: a second run creates no duplicates", async () => {
     await importOstroMenu(hotelId, menu);
-    expect(await adminDb.serviceItem.count({ where: { hotelId, externalKey: { startsWith: "ostro-" } } })).toBe(120);
+    expect(await adminDb.serviceItem.count({ where: { hotelId, externalKey: { startsWith: "ostro-" } } })).toBe(127);
   });
 
   it("uses the Ostro name and price unchanged, with the English name as the Arabic placeholder", async () => {
@@ -291,7 +293,7 @@ It reads `prisma/data/ostro-menu.sql`, parses it, and imports into the hotel who
 - [ ] **Step 2: Run it twice and verify**
 
 Run: `pnpm menu:import-ostro && pnpm menu:import-ostro`
-Expected: both runs print `categories: 17, items: 120`; the second run creates no new rows.
+Expected: both runs print `categories: 17, items: 127`; the second run creates no new rows.
 
 - [ ] **Step 3: Commit**
 
