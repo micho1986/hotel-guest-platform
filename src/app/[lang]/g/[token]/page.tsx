@@ -25,6 +25,11 @@ export default async function GuestHome({ params }: PageProps<"/[lang]/g/[token]
             </Link>
           </li>
         ))}
+        <li>
+          <Link href={`/${lang}/g/${token}/menu`} className="block rounded-2xl border border-soft-gray bg-white p-5 font-medium text-navy shadow-sm hover:border-champagne-dark">
+            Room service menu
+          </Link>
+        </li>
       </ul>
     </>
   );
