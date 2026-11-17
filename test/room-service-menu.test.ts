@@ -67,7 +67,7 @@ describe("listRoomServiceMenu", () => {
   it("gives an item its dish photo, or null when it has none", async () => {
     const biryani = await adminDb.serviceItem.findFirstOrThrow({ where: { hotelId, externalKey: "ostro-126" } });
     const plain = await adminDb.serviceItem.findFirstOrThrow({
-      where: { hotelId, isActive: true, externalKey: { notIn: dishPhotos.map((p) => p.key) } },
+      where: { hotelId, isActive: true, externalKey: { startsWith: "ostro-", notIn: dishPhotos.map((p) => p.key) } },
     });
     const items = (await listRoomServiceMenu(guest)).flatMap((c) => c.items);
     expect(items.find((i) => i.id === biryani.id)?.imageUrl).toBe("/menu/biryani.jpg");
