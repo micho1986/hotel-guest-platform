@@ -69,9 +69,12 @@ export async function listQueue(actor: Actor, tab: QueueTab) {
 export async function getRequestForStaff(actor: Actor, requestId: string) {
   if (!isUuid(requestId)) return null;
   const db = dbFor(actor, "requests.view");
-  return db.request.findFirst({
+  const r = await db.request.findFirst({
     where: { id: requestId, ...viewScope(actor) },
     select: {
+      serviceOrder: {
+        select: { lines: { orderBy: { createdAt: "asc" }, select: { nameSnapshot: true, qty: true, unitPrice: true } } },
+      },
       id: true,
       publicRef: true,
       status: true,
@@ -94,6 +97,12 @@ export async function getRequestForStaff(actor: Actor, requestId: string) {
       },
     },
   });
+  if (!r) return null;
+  const { serviceOrder, ...request } = r;
+  if (!serviceOrder) return { ...request, order: null };
+  const lines = serviceOrder.lines.map((l) => ({ nameSnapshot: l.nameSnapshot, qty: l.qty, unitPrice: Number(l.unitPrice) }));
+  const total = lines.reduce((sum, l) => sum + l.unitPrice * l.qty, 0);
+  return { ...request, order: { lines, total } };
 }
 
 type Step = {

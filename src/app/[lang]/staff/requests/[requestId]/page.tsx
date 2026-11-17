@@ -63,6 +63,21 @@ export default async function RequestDetail({ params }: PageProps<"/[lang]/staff
         )}
       </header>
 
+      {r.order && (
+        <section className={`${card} mb-4`} aria-labelledby="order">
+          <h2 id="order" className="mb-4 font-medium text-navy">Order</h2>
+          <ul className="grid gap-2 text-sm">
+            {r.order.lines.map((l, i) => (
+              <li key={i} className="flex justify-between gap-4">
+                <span>{l.nameSnapshot} × {l.qty}</span>
+                <span>AED {(l.unitPrice * l.qty).toFixed(2)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 font-medium text-navy">Total: AED {r.order.total.toFixed(2)}</p>
+        </section>
+      )}
+
       {canManage && (
         <section className={`${card} mb-4`} aria-labelledby="actions">
           <h2 id="actions" className="mb-4 font-medium text-navy">Actions</h2>
