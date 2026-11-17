@@ -5,7 +5,7 @@ import { ActionForm } from "@/components/action-form";
 import { input, label } from "@/components/ui";
 import type { FormAction } from "@/server/forms";
 
-type MenuItem = { id: string; nameEn: string; descriptionEn: string | null; price: number };
+type MenuItem = { id: string; nameEn: string; descriptionEn: string | null; price: number; imageUrl: string | null };
 type Menu = { key: string; nameEn: string; items: MenuItem[] }[];
 
 const MAX_QTY = 20;
@@ -90,13 +90,15 @@ export function RoomServiceCart({
       <input type="hidden" name="lang" value={lang} />
       <input type="hidden" name="lines" value={JSON.stringify(lines)} />
 
+      <h2 className="mb-2 font-display text-xl text-navy">In-Room Dining</h2>
       {menu.map((c) => (
         <section key={c.key} className="mb-6">
-          <h2 className="mb-2 font-display text-xl text-navy">{c.nameEn}</h2>
+          <h3 className="mb-2 font-medium text-navy">{c.nameEn}</h3>
           <ul className="grid gap-3">
             {c.items.map((i) => (
               <li key={i.id} className="flex items-center justify-between gap-4 rounded-2xl border border-soft-gray bg-white p-4">
-                <div>
+                {i.imageUrl && <img src={i.imageUrl} alt={i.nameEn} className="h-20 w-20 shrink-0 rounded-xl object-cover" />}
+                <div className="flex-1">
                   <p className="font-medium text-navy">{i.nameEn}</p>
                   {i.descriptionEn && <p className="text-sm text-charcoal/70">{i.descriptionEn}</p>}
                   <p className="text-sm text-navy">AED {i.price.toFixed(2)}</p>

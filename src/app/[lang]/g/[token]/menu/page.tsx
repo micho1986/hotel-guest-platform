@@ -15,7 +15,7 @@ export default async function RoomServiceMenuPage({ params }: PageProps<"/[lang]
 
   return (
     <>
-      <h1 className="font-display text-2xl text-navy">Room service</h1>
+      <h1 className="font-display text-2xl text-navy">In-Room Dining</h1>
       <RoomServiceCart token={token} lang={lang} menu={menu} action={placeOrderAction} />
     </>
   );

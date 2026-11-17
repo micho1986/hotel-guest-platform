@@ -18,7 +18,8 @@ export default async function GuestHome({ params }: PageProps<"/[lang]/g/[token]
       <h1 className="font-display text-2xl text-navy rtl:font-arabic">{t.guest.services}</h1>
       <p className="text-charcoal/80">{t.guest.intro}</p>
       <ul className="grid gap-3">
-        {categories.map((c) => (
+        {/* Ostro items are reached through In-Room Dining, so their categories and the empty room_service category are not listed here. */}
+        {categories.filter((c) => !c.key.startsWith("ostro-") && c.key !== "room_service").map((c) => (
           <li key={c.id}>
             <Link href={`/${lang}/g/${token}/${c.key}`} className="block rounded-2xl border border-soft-gray bg-white p-5 font-medium text-navy shadow-sm hover:border-champagne-dark">
               {name(c)}
@@ -27,7 +28,7 @@ export default async function GuestHome({ params }: PageProps<"/[lang]/g/[token]
         ))}
         <li>
           <Link href={`/${lang}/g/${token}/menu`} className="block rounded-2xl border border-soft-gray bg-white p-5 font-medium text-navy shadow-sm hover:border-champagne-dark">
-            Room service menu
+            In-Room Dining
           </Link>
         </li>
       </ul>
