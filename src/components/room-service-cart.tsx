@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ActionForm } from "@/components/action-form";
 import { input, label } from "@/components/ui";
@@ -43,6 +44,7 @@ export function RoomServiceCart({
   action: FormAction;
 }) {
   const [qty, setQty] = useState<Record<string, number>>({});
+  const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
 
   useEffect(() => {
     try {
@@ -90,6 +92,24 @@ export function RoomServiceCart({
       <input type="hidden" name="lang" value={lang} />
       <input type="hidden" name="lines" value={JSON.stringify(lines)} />
 
+      {zoom && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={zoom.alt}
+          onClick={() => setZoom(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+        >
+          <button
+            type="button"
+            onClick={() => setZoom(null)}
+            className="absolute right-4 top-4 rounded-full bg-white px-3 py-1 text-navy"
+          >
+            Close
+          </button>
+          <Image src={zoom.src} alt={zoom.alt} width={900} height={900} className="h-auto max-h-[85vh] w-auto max-w-full rounded-2xl object-contain" />
+        </div>
+      )}
       <h2 className="mb-2 font-display text-xl text-navy">In-Room Dining</h2>
       {menu.map((c) => (
         <section key={c.key} className="mb-6">
@@ -97,7 +117,16 @@ export function RoomServiceCart({
           <ul className="grid gap-3">
             {c.items.map((i) => (
               <li key={i.id} className="flex items-center justify-between gap-4 rounded-2xl border border-soft-gray bg-white p-4">
-                {i.imageUrl && <img src={i.imageUrl} alt={i.nameEn} className="h-20 w-20 shrink-0 rounded-xl object-cover" />}
+                {i.imageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setZoom({ src: i.imageUrl as string, alt: i.nameEn })}
+                    aria-label={`View photo of ${i.nameEn}`}
+                    className="shrink-0 rounded-xl"
+                  >
+                    <Image src={i.imageUrl} alt={i.nameEn} width={80} height={80} className="h-20 w-20 rounded-xl object-cover" />
+                  </button>
+                )}
                 <div className="flex-1">
                   <p className="font-medium text-navy">{i.nameEn}</p>
                   {i.descriptionEn && <p className="text-sm text-charcoal/70">{i.descriptionEn}</p>}

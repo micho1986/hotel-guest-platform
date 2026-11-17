@@ -9,7 +9,7 @@ A guest with an active stay opens the guest page, browses the Ostro menu, adds i
 ## Decisions made with Michael
 
 - The Ostro menu is copied into the hotel's existing service catalogue. It is not read live from the Ostro project.
-- The menu is kept exactly as it is in Ostro. The copy lives at `prisma/data/ostro-menu.sql` (byte-identical to Ostro's `seed/seed.sql`, sha256 `74ccbc2f…79d7d`). Its 17 categories and 127 products are imported unchanged: same names, descriptions, prices, and availability.
+- The menu is kept exactly as it is in Ostro. The copy lives at `prisma/data/ostro-menu.sql`. It matches Ostro's `seed/seed.sql` except for two biryani prices, which follow the current Ostro menu: Chicken Biryani AED 59 and Mutton Biryani AED 75. Its 17 categories and 127 products are imported with the same names, descriptions, and availability, and with the two biryani prices above.
 - One cart becomes one order. Staff see one order with all its lines.
 - Guests pay on delivery. The app records no payment and takes no money.
 - English only at launch. Arabic is a later step.

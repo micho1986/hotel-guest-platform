@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { GuestStay } from "@/server/guest";
 import { importOstroMenu, ROOM_SERVICE_CATEGORY_KEY } from "@/server/room-service/import";
@@ -23,6 +23,16 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await adminDb.$disconnect();
+});
+
+const dishPhotos = [...readFileSync("src/server/room-service/menu.ts", "utf8").matchAll(/"ostro-(\d+)": "(\/menu\/[^"]+)"/g)].map((m) => ({
+  key: `ostro-${m[1]}`,
+  path: m[2],
+}));
+
+it("maps every dish photo to a file under public/menu", () => {
+  expect(dishPhotos.length).toBeGreaterThan(0);
+  for (const p of dishPhotos) expect(existsSync(`public${p.path}`), p.path).toBe(true);
 });
 
 describe("listRoomServiceMenu", () => {
@@ -52,5 +62,15 @@ describe("listRoomServiceMenu", () => {
     const { stay } = await createStay();
     await adminDb.stay.update({ where: { id: stay.id }, data: { status: "CHECKED_OUT", tokenRevokedAt: new Date() } });
     expect(await listRoomServiceMenu({ stayId: stay.id, hotelId })).toEqual([]);
+  });
+
+  it("gives an item its dish photo, or null when it has none", async () => {
+    const biryani = await adminDb.serviceItem.findFirstOrThrow({ where: { hotelId, externalKey: "ostro-126" } });
+    const plain = await adminDb.serviceItem.findFirstOrThrow({
+      where: { hotelId, isActive: true, externalKey: { notIn: dishPhotos.map((p) => p.key) } },
+    });
+    const items = (await listRoomServiceMenu(guest)).flatMap((c) => c.items);
+    expect(items.find((i) => i.id === biryani.id)?.imageUrl).toBe("/menu/biryani.jpg");
+    expect(items.find((i) => i.id === plain.id)?.imageUrl).toBeNull();
   });
 });
