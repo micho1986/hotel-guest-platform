@@ -14,6 +14,8 @@ export const en = {
     noRequests: "You have no requests yet.",
     noItems: "Nothing is available in this category yet.",
     quantity: "Quantity",
+    closePhoto: "Close",
+    viewPhoto: "View photo",
     note: "Note",
     notePlaceholder: "Tell us what you need",
     send: "Send request",

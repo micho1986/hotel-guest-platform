@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActionForm } from "@/components/action-form";
 import { input, label } from "@/components/ui";
+import { DEFAULT_LOCALE, getDictionary, isLocale } from "@/i18n";
 import type { FormAction } from "@/server/forms";
 
 type MenuItem = { id: string; nameEn: string; descriptionEn: string | null; price: number; imageUrl: string | null };
@@ -45,6 +46,21 @@ export function RoomServiceCart({
 }) {
   const [qty, setQty] = useState<Record<string, number>>({});
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const dict = getDictionary(isLocale(lang) ? lang : DEFAULT_LOCALE).guest;
+  useEffect(() => {
+    if (!zoom) return;
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoom(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
+  useEffect(() => {
+    if (zoom === null) openerRef.current?.focus();
+  }, [zoom]);
 
   useEffect(() => {
     try {
@@ -101,13 +117,14 @@ export function RoomServiceCart({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
         >
           <button
+            ref={closeRef}
             type="button"
             onClick={() => setZoom(null)}
             className="absolute right-4 top-4 rounded-full bg-white px-3 py-1 text-navy"
           >
-            Close
+            {dict.closePhoto}
           </button>
-          <Image src={zoom.src} alt={zoom.alt} width={900} height={900} className="h-auto max-h-[85vh] w-auto max-w-full rounded-2xl object-contain" />
+          <Image src={zoom.src} alt={zoom.alt} width={900} height={900} className="h-auto max-h-[85vh] w-full max-w-3xl rounded-2xl object-contain" />
         </div>
       )}
       <h2 className="mb-2 font-display text-xl text-navy">In-Room Dining</h2>
@@ -120,8 +137,11 @@ export function RoomServiceCart({
                 {i.imageUrl && (
                   <button
                     type="button"
-                    onClick={() => setZoom({ src: i.imageUrl as string, alt: i.nameEn })}
-                    aria-label={`View photo of ${i.nameEn}`}
+                    onClick={(e) => {
+                      openerRef.current = e.currentTarget;
+                      setZoom({ src: i.imageUrl as string, alt: i.nameEn });
+                    }}
+                    aria-label={`${dict.viewPhoto}: ${i.nameEn}`}
                     className="shrink-0 rounded-xl"
                   >
                     <Image src={i.imageUrl} alt={i.nameEn} width={80} height={80} className="h-20 w-20 rounded-xl object-cover" />
