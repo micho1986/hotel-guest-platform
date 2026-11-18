@@ -16,6 +16,8 @@ export const ar: Dictionary = {
     noRequests: "لا توجد طلبات حتى الآن.",
     noItems: "لا توجد خدمات متاحة في هذا القسم حاليًا.",
     quantity: "الكمية",
+    closePhoto: "إغلاق",
+    viewPhoto: "عرض صورة",
     note: "ملاحظة",
     notePlaceholder: "أخبرونا بما تحتاجون إليه",
     send: "إرسال الطلب",

@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@/generated/prisma/client";
 import { isUniqueViolation } from "@/server/admin/common";
 import { tenantDb, tenantTransaction } from "@/server/db";
 import type { GuestStay } from "@/server/guest";
@@ -19,6 +20,7 @@ export async function submitGuestRequest(
   guest: GuestStay,
   input: { serviceItemId: string; qty: number; guestNote: string | null },
   sender: PushSender | null = defaultPushSender(),
+  afterCreate?: (tx: Prisma.TransactionClient, requestId: string) => Promise<void>,
 ): Promise<GuestRequestResult> {
   const db = tenantDb(guest.hotelId);
 
@@ -71,6 +73,7 @@ export async function submitGuestRequest(
             toStatus: "RECEIVED",
           },
         });
+        if (afterCreate) await afterCreate(tx, request.id);
         const recipients = await alertRecipients(tx, guest.hotelId, item.departmentId);
         if (recipients.length > 0) {
           await tx.notification.createMany({
