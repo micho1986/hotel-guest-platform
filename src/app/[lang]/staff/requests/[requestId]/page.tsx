@@ -78,6 +78,14 @@ export default async function RequestDetail({ params }: PageProps<"/[lang]/staff
         </section>
       )}
 
+      {r.feedback && (
+        <section className={`${card} mb-4`} aria-labelledby="feedback">
+          <h2 id="feedback" className="mb-2 font-medium text-navy">Guest rating</h2>
+          <p className="text-sm text-navy">{r.feedback.rating} / 5 · {formatHotelTime(r.feedback.createdAt)}</p>
+          {r.feedback.comment && <p className="mt-2 text-sm text-charcoal/80">{r.feedback.comment}</p>}
+        </section>
+      )}
+
       {canManage && (
         <section className={`${card} mb-4`} aria-labelledby="actions">
           <h2 id="actions" className="mb-4 font-medium text-navy">Actions</h2>

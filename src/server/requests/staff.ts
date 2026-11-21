@@ -54,12 +54,26 @@ export async function listQueue(actor: Actor, tab: QueueTab) {
       priority: true,
       createdAt: true,
       assigneeId: true,
-      room: { select: { number: true } },
-      serviceItem: { select: { nameEn: true } },
-      department: { select: { code: true } },
+      roomId: true,
+      serviceItemId: true,
+      departmentId: true,
     },
   });
-  return rows.sort((a, b) => {
+  // Relations are read one query at a time, as in getRequestForStaff, to avoid the pg warning.
+  const ids = (pick: (r: (typeof rows)[number]) => string) => [...new Set(rows.map(pick))];
+  const rooms = await db.room.findMany({ where: { id: { in: ids((r) => r.roomId) } }, select: { id: true, number: true } });
+  const items = await db.serviceItem.findMany({ where: { id: { in: ids((r) => r.serviceItemId) } }, select: { id: true, nameEn: true } });
+  const depts = await db.department.findMany({ where: { id: { in: ids((r) => r.departmentId) } }, select: { id: true, code: true } });
+  const roomById = new Map(rooms.map((x) => [x.id, x]));
+  const itemById = new Map(items.map((x) => [x.id, x]));
+  const deptById = new Map(depts.map((x) => [x.id, x]));
+  const queue = rows.map(({ roomId, serviceItemId, departmentId, ...r }) => ({
+    ...r,
+    room: { number: roomById.get(roomId)?.number ?? "" },
+    serviceItem: { nameEn: itemById.get(serviceItemId)?.nameEn ?? "" },
+    department: { code: deptById.get(departmentId)?.code ?? "" },
+  }));
+  return queue.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority === "URGENT" ? -1 : 1;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
@@ -72,9 +86,6 @@ export async function getRequestForStaff(actor: Actor, requestId: string) {
   const r = await db.request.findFirst({
     where: { id: requestId, ...viewScope(actor) },
     select: {
-      serviceOrder: {
-        select: { lines: { orderBy: { createdAt: "asc" }, select: { nameSnapshot: true, qty: true, unitPrice: true } } },
-      },
       id: true,
       publicRef: true,
       status: true,
@@ -87,22 +98,38 @@ export async function getRequestForStaff(actor: Actor, requestId: string) {
       completedAt: true,
       assigneeId: true,
       departmentId: true,
-      room: { select: { number: true } },
-      serviceItem: { select: { nameEn: true, nameAr: true } },
-      department: { select: { code: true, nameEn: true } },
-      photos: { select: { id: true }, take: 1 },
-      events: {
-        orderBy: { createdAt: "asc" },
-        select: { actorType: true, fromStatus: true, toStatus: true, note: true, isInternal: true, createdAt: true },
-      },
+      roomId: true,
+      serviceItemId: true,
     },
   });
   if (!r) return null;
-  const { serviceOrder, ...request } = r;
-  if (!serviceOrder) return { ...request, order: null };
-  const lines = serviceOrder.lines.map((l) => ({ nameSnapshot: l.nameSnapshot, qty: l.qty, unitPrice: Number(l.unitPrice) }));
+
+  // Each relation is read in its own query, one after another. Prisma loads the relations of one
+  // findFirst concurrently, and inside a transaction that sends two queries down one connection,
+  // which pg warns about.
+  const room = await db.room.findFirstOrThrow({ where: { id: r.roomId }, select: { number: true } });
+  const serviceItem = await db.serviceItem.findFirstOrThrow({ where: { id: r.serviceItemId }, select: { nameEn: true, nameAr: true } });
+  const department = await db.department.findFirstOrThrow({ where: { id: r.departmentId }, select: { code: true, nameEn: true } });
+  const feedback = await db.requestFeedback.findFirst({
+    where: { requestId },
+    select: { rating: true, comment: true, createdAt: true },
+  });
+  const photos = await db.requestPhoto.findMany({ where: { requestId }, select: { id: true }, take: 1 });
+  const events = await db.requestEvent.findMany({
+    where: { requestId },
+    orderBy: { createdAt: "asc" },
+    select: { actorType: true, fromStatus: true, toStatus: true, note: true, isInternal: true, createdAt: true },
+  });
+  const serviceOrder = await db.serviceOrder.findFirst({ where: { requestId }, select: { id: true } });
+  if (!serviceOrder) return { ...r, room, serviceItem, department, feedback, photos, events, order: null };
+  const orderLines = await db.serviceOrderLine.findMany({
+    where: { orderId: serviceOrder.id },
+    orderBy: { createdAt: "asc" },
+    select: { nameSnapshot: true, qty: true, unitPrice: true },
+  });
+  const lines = orderLines.map((l) => ({ nameSnapshot: l.nameSnapshot, qty: l.qty, unitPrice: Number(l.unitPrice) }));
   const total = lines.reduce((sum, l) => sum + l.unitPrice * l.qty, 0);
-  return { ...request, order: { lines, total } };
+  return { ...r, room, serviceItem, department, feedback, photos, events, order: { lines, total } };
 }
 
 type Step = {
