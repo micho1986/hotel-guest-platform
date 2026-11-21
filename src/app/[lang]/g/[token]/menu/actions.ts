@@ -30,7 +30,8 @@ export async function placeOrderAction(_prev: ActionResult | null, formData: For
   const parsed = linesSchema.safeParse(raw);
   if (!parsed.success) return fail("Your cart could not be read. Please try again.");
 
-  const res = await placeServiceOrder(guest, { lines: parsed.data, guestNote: null });
+  const note = typeof v.guestNote === "string" ? v.guestNote.trim() : "";
+  const res = await placeServiceOrder(guest, { lines: parsed.data, guestNote: note || null });
   if (!res.ok || !res.requestId) return fail(res.message);
 
   redirect(`/${lang}/g/${tok}/requests/${res.requestId}`);

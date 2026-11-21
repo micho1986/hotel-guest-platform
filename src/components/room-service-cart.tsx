@@ -171,6 +171,16 @@ export function RoomServiceCart({
         </section>
       ))}
 
+      <label className={label} htmlFor="cart-note">{dict.note}</label>
+      <textarea
+        id="cart-note"
+        name="guestNote"
+        rows={2}
+        maxLength={500}
+        placeholder={dict.notePlaceholder}
+        className={`${input} mb-4`}
+      />
+
       <p className="mb-4 font-medium text-navy">Total: AED {total.toFixed(2)}</p>
     </ActionForm>
     </div>
